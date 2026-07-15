@@ -22,7 +22,6 @@ import Administration from './workspaces/Administration';
 // Redesigned additional workspaces
 import AllTools from './workspaces/AllTools';
 import Projects from './workspaces/Projects';
-import AIHumanizer from './workspaces/AIHumanizer';
 import AIChat from './workspaces/AIChat';
 import Summarizer from './workspaces/Summarizer';
 
@@ -43,6 +42,7 @@ interface WorkspaceContentProps {
   sharedText: string;
   setSharedText: (text: string) => void;
   currentUser?: any;
+  triggerPremiumLock?: (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => void;
 }
 
 export default function WorkspaceContent({ 
@@ -100,7 +100,7 @@ export default function WorkspaceContent({
         />
       );
     case 'ai-detection':
-      return <AIDetection />;
+      return <AIDetection currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />;
     case 'translation':
       return <Translation />;
     case 'pdf-intelligence':
@@ -138,7 +138,7 @@ export default function WorkspaceContent({
     case 'projects':
       return <Projects />;
     case 'ai-humanizer':
-      return <AIHumanizer />;
+      return <AIDetection currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} initialTab="humanizer" />;
     case 'ai-chat':
       return (
         <AIChat 

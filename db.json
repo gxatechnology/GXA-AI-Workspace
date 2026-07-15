@@ -47,6 +47,13 @@
     "pdf_uploads_limit": 3,
     "ocr_pages_limit": 2,
     "grammar_corrections_limit": 5,
+    "originality_daily_limit": 5,
+    "originality_word_limit": 1500,
+    "originality_paid_features": [
+      "humanizer_advanced",
+      "plagiarism",
+      "insights"
+    ],
     "pricing_free": "₹0",
     "pricing_pro": "₹99",
     "pricing_pro_plus": "₹149",

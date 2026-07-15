@@ -5,12 +5,17 @@ export interface SystemConfig {
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
+  originality_daily_limit?: number;
+  originality_word_limit?: number;
+  originality_paid_features?: Array<'humanizer_advanced' | 'plagiarism' | 'insights'>;
   pricing_free: string;
   pricing_pro: string;
   pricing_pro_plus: string;
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  pricing_pro_monthly?: string;
+  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
@@ -28,6 +33,7 @@ export interface UsageStats {
   pdf_uploads: number;
   ocr_pages: number;
   grammar_corrections: number;
+  originality_checks?: number;
 }
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
@@ -47,6 +53,9 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    originality_daily_limit: 5,
+    originality_word_limit: 1500,
+    originality_paid_features: ['humanizer_advanced', 'plagiarism', 'insights'],
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
