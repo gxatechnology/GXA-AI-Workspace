@@ -47,6 +47,8 @@
     "pdf_uploads_limit": 3,
     "ocr_pages_limit": 2,
     "grammar_corrections_limit": 5,
+    "grammar_word_limit": 500,
+    "grammar_advanced_entitlement": "pro",
     "pricing_free": "₹0",
     "pricing_pro": "₹99",
     "pricing_pro_plus": "₹149",

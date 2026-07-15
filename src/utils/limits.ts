@@ -5,12 +5,16 @@ export interface SystemConfig {
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
+  grammar_word_limit?: number;
+  grammar_advanced_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   pricing_free: string;
   pricing_pro: string;
   pricing_pro_plus: string;
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  pricing_pro_monthly?: string;
+  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
@@ -47,6 +51,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    grammar_word_limit: 500,
+    grammar_advanced_entitlement: 'pro',
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",

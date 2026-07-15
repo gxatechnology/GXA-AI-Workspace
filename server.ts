@@ -25,6 +25,8 @@ function readDb() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    grammar_word_limit: 500,
+    grammar_advanced_entitlement: 'pro',
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
@@ -73,9 +75,10 @@ function readDb() {
     db = { users: {}, projects: {}, documents: {}, chats: {}, config: defaultConfig, usage: {} };
   }
 
-  // Backfill if needed
-  if (!db.config || Object.keys(db.config).length === 0) {
-    db.config = defaultConfig;
+  // Backfill newly introduced configuration fields while preserving admin overrides.
+  const mergedConfig = { ...defaultConfig, ...(db.config || {}), feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) } };
+  if (JSON.stringify(db.config || {}) !== JSON.stringify(mergedConfig)) {
+    db.config = mergedConfig;
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
   if (!db.usage) {
