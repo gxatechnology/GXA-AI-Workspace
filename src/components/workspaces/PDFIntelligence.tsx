@@ -614,7 +614,7 @@ Deliver a deeply structured response using lists, clear page reference citations
 
       // Parse output into lines
       const lines = rawRes.split('\n').map(l => l.replace(/^[|\s]+|[|\s]+$/g, '').split('|').map(cell => cell.trim())).filter(l => l.length > 1 && !l[0].includes('---'));
-      setExtractedTables(lines.length > 0 ? lines : [['Metric Parameter', 'Q1 Target', 'Q2 Outcome'], ['SaaS Margin', '82.4%', '84.1%'], ['Churn Index', '1.8%', '1.4%'], ['ARR Growth', '$12.4M', '$14.9M']]);
+      setExtractedTables(lines.length > 0 ? lines : []);
     } catch (e) {
       setExtractedTables([['Metric Column 1', 'Metric Column 2'], ['Simulation Row A', 'Values 100'], ['Simulation Row B', 'Values 200']]);
     } finally {

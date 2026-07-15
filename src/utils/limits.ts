@@ -11,6 +11,14 @@ export interface SystemConfig {
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  plans: Record<string, {
+    name: string;
+    monthlyPrice: number | null;
+    priceLabel?: string;
+    billing: string;
+    features: string[];
+    limits: { words: number; requests: number; pdfUploads: number; pdfSizeMb: number; pdfPages: number; ocrPages: number; storageMb: number; historyDays: number };
+  }>;
   feature_locks: {
     academic: boolean;
     creative: boolean;
@@ -19,6 +27,7 @@ export interface SystemConfig {
   };
   coupons: Array<{ code: string; discount: string }>;
   trial_days: number;
+  promotions?: Array<{ id: string; message: string; active: boolean }>;
   upgrade_message: string;
 }
 
@@ -53,6 +62,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pricing_team: "Contact Sales",
     pricing_enterprise: "Custom Pricing",
     pricing_currency: "INR",
+    plans: {},
     feature_locks: {
       academic: true,
       creative: true,

@@ -1871,7 +1871,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                 <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-slate-50/50 dark:bg-zinc-950/20 flex flex-col justify-between text-left">
                   <div>
                     <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Free Plan</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">$0</h4>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">{config?.pricing_free}</h4>
                     <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
                       <li className="flex items-center gap-1">✓ 125 word cap</li>
                       <li className="flex items-center gap-1">✓ Standard Mode</li>
@@ -1890,7 +1890,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                   <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-teal-500 text-white text-[7px] font-black rounded uppercase tracking-wider">Popular</span>
                   <div>
                     <span className="text-[9px] font-black uppercase text-teal-600 dark:text-teal-400 tracking-wider">Pro</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">$19<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">{config?.pricing_pro}<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
                     <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
                       <li className="flex items-center gap-1 text-teal-600 font-bold">✓ Unlimited words</li>
                       <li className="flex items-center gap-1">✓ 12 Elite Modes</li>
@@ -1912,7 +1912,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                 <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 flex flex-col justify-between text-left">
                   <div>
                     <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Pro Plus</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">$39<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">{config?.pricing_pro_plus}<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
                     <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
                       <li className="flex items-center gap-1">✓ Unlimited speed</li>
                       <li className="flex items-center gap-1">✓ Custom API key</li>
@@ -1934,7 +1934,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                 <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 flex flex-col justify-between text-left">
                   <div>
                     <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Team</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">$79<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">{config?.pricing_team}</h4>
                     <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
                       <li className="flex items-center gap-1">✓ 5 Seats included</li>
                       <li className="flex items-center gap-1">✓ Shared folders</li>

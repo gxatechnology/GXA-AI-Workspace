@@ -49,7 +49,7 @@ export default function App() {
     } else {
       localStorage.removeItem('gxa_user'); // guest shouldn't persist across browser reloads
     }
-    setActiveWorkspace('dashboard');
+    setActiveWorkspace(sessionStorage.getItem('gxa_pending_plan') ? 'pricing' : 'dashboard');
   };
 
   const handleLogout = () => {
@@ -247,9 +247,9 @@ export default function App() {
                     Upgrade <ArrowUpRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 text-[10px] font-extrabold uppercase tracking-wide border border-teal-200/40">
-                    ★ {currentUser?.subscription} Active
-                  </span>
+                  <button onClick={() => setActiveWorkspace('billing')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 text-[10px] font-extrabold uppercase tracking-wide border border-teal-200/40">
+                    Manage Plan
+                  </button>
                 )}
 
                 {/* Workspace switcher shortcut */}
@@ -303,6 +303,8 @@ export default function App() {
               sharedText={sharedText}
               setSharedText={setSharedText}
               currentUser={currentUser}
+              onAuthRequired={(mode) => { sessionStorage.setItem('gxa_return_workspace', 'pricing'); handleLogout(); setInitialLandingAuth(mode); }}
+              onSubscriptionActivated={(user) => { setCurrentUser(user); localStorage.setItem('gxa_user', JSON.stringify(user)); }}
               triggerPremiumLock={triggerPremiumLock}
             />
           </div>

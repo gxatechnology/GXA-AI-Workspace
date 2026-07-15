@@ -91,7 +91,7 @@ export default function UpgradeModal({
                   Experience professional AI without word restrictions
                 </p>
                 <p className="text-xs text-slate-500 dark:text-zinc-400">
-                  Plans start from as low as <span className="font-extrabold text-teal-500">₹99/month</span>
+                  Compare plan features, limits and current backend-configured pricing.
                 </p>
               </div>
 
