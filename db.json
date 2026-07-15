@@ -1,0 +1,95 @@
+{
+  "users": {
+    "tauqeerashraf250@gmail.com": {
+      "id": "tauqeerashraf250@gmail.com",
+      "username": "tauqeer",
+      "name": "Tauqeer Ashraf",
+      "email": "tauqeerashraf250@gmail.com",
+      "password": "password123",
+      "subscription": "free",
+      "role": "User"
+    },
+    "gxatechnology@gmail.com": {
+      "id": "gxatechnology@gmail.com",
+      "username": "gxatechnology",
+      "name": "GXA Tech",
+      "email": "gxatechnology@gmail.com",
+      "password": "tauqeer007",
+      "subscription": "free",
+      "role": "User"
+    }
+  },
+  "projects": {
+    "gxatechnology@gmail.com": []
+  },
+  "documents": {
+    "gxatechnology@gmail.com": []
+  },
+  "chats": {
+    "tauqeerashraf250@gmail.com": [
+      {
+        "role": "user",
+        "content": "Draft a professional but friendly email following up with a corporate client about a successful pilot project.",
+        "timestamp": "2026-07-14T23:36:50.447Z"
+      },
+      {
+        "role": "assistant",
+        "content": "I encountered an error connecting to the intelligence model. Verify your API secrets inside settings.",
+        "timestamp": "2026-07-14T23:37:08.532Z"
+      }
+    ],
+    "gxatechnology@gmail.com": []
+  },
+  "config": {
+    "paraphrases_limit": 10,
+    "paraphrase_word_limit": 125,
+    "ai_chats_limit": 5,
+    "pdf_uploads_limit": 3,
+    "ocr_pages_limit": 2,
+    "grammar_corrections_limit": 5,
+    "pricing_free": "₹0",
+    "pricing_pro": "₹99",
+    "pricing_pro_plus": "₹149",
+    "pricing_team": "Contact Sales",
+    "pricing_enterprise": "Custom Pricing",
+    "pricing_currency": "INR",
+    "feature_locks": {
+      "academic": true,
+      "creative": true,
+      "professional": true,
+      "custom": true
+    },
+    "coupons": [
+      {
+        "code": "GXA40",
+        "discount": "40%"
+      },
+      {
+        "code": "SAVE20",
+        "discount": "20%"
+      }
+    ],
+    "trial_days": 14,
+    "upgrade_message": "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
+  },
+  "usage": {
+    "tauqeerashraf250@gmail.com": {
+      "2026-07-14": {
+        "paraphrases": 0,
+        "chats": 0,
+        "pdf_uploads": 0,
+        "ocr_pages": 0,
+        "grammar_corrections": 0
+      }
+    },
+    "gxatechnology@gmail.com": {
+      "2026-07-14": {
+        "paraphrases": 0,
+        "chats": 0,
+        "pdf_uploads": 0,
+        "ocr_pages": 0,
+        "grammar_corrections": 0
+      }
+    }
+  }
+}

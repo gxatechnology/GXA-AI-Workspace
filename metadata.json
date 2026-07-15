@@ -1,0 +1,6 @@
+{
+  "name": "GXA AI Workspace",
+  "description": "Enterprise AI Workspace for Technology, Marketing, Automation, and Growth by GXA Technologies. Features multi-workspace tools, professional design, and Gemini integrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
