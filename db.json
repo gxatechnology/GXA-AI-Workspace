@@ -59,6 +59,20 @@
       "professional": true,
       "custom": true
     },
+    "paraphraser_mode_entitlements": {
+      "standard": "free",
+      "fluency": "free",
+      "humanize": "pro_plus",
+      "formal": "pro_plus",
+      "academic": "pro_plus",
+      "professional": "pro_plus",
+      "business": "pro_plus",
+      "creative": "pro_plus",
+      "simple": "pro_plus",
+      "expand": "pro_plus",
+      "shorten": "pro_plus",
+      "custom": "pro_plus"
+    },
     "coupons": [
       {
         "code": "GXA40",

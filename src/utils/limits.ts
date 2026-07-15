@@ -11,12 +11,15 @@ export interface SystemConfig {
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  pricing_pro_monthly?: string;
+  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
     professional: boolean;
     custom: boolean;
   };
+  paraphraser_mode_entitlements?: Record<string, 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise'>;
   coupons: Array<{ code: string; discount: string }>;
   trial_days: number;
   upgrade_message: string;
@@ -58,6 +61,11 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
       creative: true,
       professional: true,
       custom: true
+    },
+    paraphraser_mode_entitlements: {
+      standard: 'free', fluency: 'free', humanize: 'pro_plus', formal: 'pro_plus',
+      academic: 'pro_plus', professional: 'pro_plus', business: 'pro_plus', creative: 'pro_plus',
+      simple: 'pro_plus', expand: 'pro_plus', shorten: 'pro_plus', custom: 'pro_plus'
     },
     coupons: [{ code: "GXA40", discount: "40%" }],
     trial_days: 14,
@@ -117,5 +125,5 @@ export async function incrementUsage(userEmail: string, type: keyof UsageStats, 
 export function isUserPremium(user: any): boolean {
   if (!user) return false;
   const sub = String(user.subscription || '').toLowerCase();
-  return sub === 'pro' || sub === 'premium' || sub === 'enterprise';
+  return sub === 'pro' || sub === 'pro_plus' || sub === 'pro plus' || sub === 'premium' || sub === 'team' || sub === 'enterprise';
 }
