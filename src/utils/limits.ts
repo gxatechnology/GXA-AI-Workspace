@@ -31,38 +31,10 @@ export interface UsageStats {
 }
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
-  try {
-    const res = await fetch('/api/admin/config');
-    if (res.ok) {
-      const data = await res.json();
-      return data.config;
-    }
-  } catch (err) {
-    console.error('Failed to fetch admin config:', err);
-  }
-  return {
-    paraphrases_limit: 10,
-    paraphrase_word_limit: 125,
-    ai_chats_limit: 5,
-    pdf_uploads_limit: 3,
-    ocr_pages_limit: 2,
-    grammar_corrections_limit: 5,
-    pricing_free: "₹0",
-    pricing_pro: "₹99",
-    pricing_pro_plus: "₹149",
-    pricing_team: "Contact Sales",
-    pricing_enterprise: "Custom Pricing",
-    pricing_currency: "INR",
-    feature_locks: {
-      academic: true,
-      creative: true,
-      professional: true,
-      custom: true
-    },
-    coupons: [{ code: "GXA40", discount: "40%" }],
-    trial_days: 14,
-    upgrade_message: "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
-  };
+  const res = await fetch('/api/admin/config');
+  if (!res.ok) throw new Error(`Unable to load backend configuration (${res.status})`);
+  const data = await res.json();
+  return data.config;
 }
 
 export async function fetchUsage(userEmail: string): Promise<UsageStats> {

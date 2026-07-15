@@ -29,9 +29,8 @@ export default function PremiumModal({
 
   if (!isOpen) return null;
 
-  const proPrice = config?.pricing_pro_monthly || '₹999';
-  const yearlyPrice = config?.pricing_pro_yearly || '₹599';
-  const currency = config?.pricing_currency || 'INR';
+  const freePrice = config?.pricing_free;
+  const proPrice = config?.pricing_pro;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs text-left animate-fade-in select-none">
@@ -71,7 +70,7 @@ export default function PremiumModal({
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">Free Basic / Guest</span>
                 <div className="flex items-baseline">
                   <span className="text-2xl font-black text-slate-900 dark:text-white font-display">
-                    {currency === 'INR' ? '₹' : '$'}0
+                    {freePrice || 'Loading…'}
                   </span>
                   <span className="text-xs font-bold text-slate-500">/ forever</span>
                 </div>
@@ -110,7 +109,7 @@ export default function PremiumModal({
                   </span>
                   <span className="text-xs font-bold text-slate-500">/ mo</span>
                 </div>
-                <p className="text-[9px] text-teal-600 font-bold">Or {yearlyPrice}/mo billed annually</p>
+                <p className="text-[9px] text-teal-600 font-bold">Backend-configured monthly pricing</p>
                 <div className="space-y-2 pt-2 border-t border-teal-500/20">
                   <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-zinc-300">
                     <Check className="h-3.5 w-3.5 text-teal-500 shrink-0" />

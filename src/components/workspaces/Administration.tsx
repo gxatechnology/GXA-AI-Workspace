@@ -82,9 +82,11 @@ export default function Administration() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
-    pricing_pro_monthly: "₹999",
-    pricing_pro_yearly: "₹599",
-    pricing_enterprise: "₹3,500",
+    pricing_free: "",
+    pricing_pro: "",
+    pricing_pro_plus: "",
+    pricing_team: "",
+    pricing_enterprise: "",
     pricing_currency: "INR",
     feature_locks: {
       academic: true,
@@ -346,20 +348,20 @@ export default function Administration() {
                   <div className="space-y-3 pt-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Monthly</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Free Price Monthly</label>
                         <input 
                           type="text" 
-                          value={config.pricing_pro_monthly}
-                          onChange={(e) => setConfig({ ...config, pricing_pro_monthly: e.target.value })}
+                          value={config.pricing_free}
+                          onChange={(e) => setConfig({ ...config, pricing_free: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Yearly (Equivalent/mo)</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Monthly</label>
                         <input 
                           type="text" 
-                          value={config.pricing_pro_yearly}
-                          onChange={(e) => setConfig({ ...config, pricing_pro_yearly: e.target.value })}
+                          value={config.pricing_pro}
+                          onChange={(e) => setConfig({ ...config, pricing_pro: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
@@ -367,23 +369,33 @@ export default function Administration() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Monthly</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Plus Price Monthly</label>
                         <input 
                           type="text" 
-                          value={config.pricing_enterprise}
-                          onChange={(e) => setConfig({ ...config, pricing_enterprise: e.target.value })}
+                          value={config.pricing_pro_plus}
+                          onChange={(e) => setConfig({ ...config, pricing_pro_plus: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Billing Currency Code</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Team Price Label</label>
                         <input 
                           type="text" 
-                          value={config.pricing_currency}
-                          onChange={(e) => setConfig({ ...config, pricing_currency: e.target.value })}
+                          value={config.pricing_team}
+                          onChange={(e) => setConfig({ ...config, pricing_team: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Label</label>
+                      <input
+                        type="text"
+                        value={config.pricing_enterprise}
+                        onChange={(e) => setConfig({ ...config, pricing_enterprise: e.target.value })}
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
+                      />
                     </div>
 
                     <div className="space-y-1">

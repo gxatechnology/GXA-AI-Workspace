@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   CreditCard, 
   BarChart3, 
@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Sliders
 } from 'lucide-react';
+import { fetchSystemConfig, SystemConfig } from '../../utils/limits';
 
 interface Invoice {
   id: string;
@@ -25,18 +26,19 @@ interface Invoice {
 export default function Billing() {
   const [couponCode, setCouponCode] = useState<string>('');
   const [couponSuccess, setCouponSuccess] = useState<string>('');
-  const [currentPlanPrice, setCurrentPlanPrice] = useState<number>(499);
+  const [config, setConfig] = useState<SystemConfig | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'licensing'>('overview');
 
-  const [invoices] = useState<Invoice[]>([
-    { id: 'INV-2026-001', date: '2026-07-01', amount: '$499.00', status: 'Paid', tokens: '1,420,000' },
-    { id: 'INV-2026-002', date: '2026-06-01', amount: '$499.00', status: 'Paid', tokens: '1,120,000' },
-    { id: 'INV-2026-003', date: '2026-05-01', amount: '$499.00', status: 'Paid', tokens: '980,000' }
-  ]);
+  useEffect(() => { fetchSystemConfig().then(setConfig).catch(() => setConfig(null)); }, []);
+
+  const invoices: Invoice[] = [
+    { id: 'INV-2026-001', date: '2026-07-01', amount: config?.pricing_pro_plus || 'Pending', status: 'Paid', tokens: '1,420,000' },
+    { id: 'INV-2026-002', date: '2026-06-01', amount: config?.pricing_pro_plus || 'Pending', status: 'Paid', tokens: '1,120,000' },
+    { id: 'INV-2026-003', date: '2026-05-01', amount: config?.pricing_pro_plus || 'Pending', status: 'Paid', tokens: '980,000' }
+  ];
 
   const handleApplyCoupon = () => {
     if (couponCode.toUpperCase() === 'GXA90') {
-      setCurrentPlanPrice(49);
       setCouponSuccess('Success! Code "GXA90" applied. Subscription reduced by 90% globally.');
     } else if (couponCode.trim() !== '') {
       setCouponSuccess('Invalid code. Try "GXA90" for standard partner testing discount.');
@@ -52,14 +54,14 @@ export default function Billing() {
             <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest block font-mono">
               SaaS Subscription
             </span>
-            <h3 className="text-lg font-black text-white mt-1">GXA Enterprise Elite</h3>
+            <h3 className="text-lg font-black text-white mt-1">GXA Pro Plus</h3>
           </div>
 
           <div className="bg-black/60 border border-zinc-800 rounded-xl p-5 relative overflow-hidden">
             <span className="text-[9px] font-bold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded tracking-wide font-mono absolute top-4 right-4">
               ACTIVE PLAN
             </span>
-            <div className="text-3xl font-black text-white">${currentPlanPrice}<span className="text-xs font-bold text-zinc-500"> /mo</span></div>
+            <div className="text-3xl font-black text-white">{config?.pricing_pro_plus || 'Loading…'}<span className="text-xs font-bold text-zinc-500"> /mo</span></div>
             <p className="text-[10px] text-zinc-400 mt-2">Billed monthly across 50 team seats. Includes isolated HTTPS proxy layers on exclusive port 3000.</p>
           </div>
 
@@ -175,7 +177,7 @@ export default function Billing() {
               <ShieldCheck className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
               <div>
                 <span className="text-xs font-bold text-white block">Enterprise Credit Active</span>
-                <p className="text-[10px] text-zinc-400 mt-0.5">Your organization has $1,200.00 in rollover partner grants active. Next auto-billing draft is scheduled on August 1st.</p>
+                <p className="text-[10px] text-zinc-400 mt-0.5">Your organization has active rollover partner grants. Next auto-billing draft is scheduled on August 1st.</p>
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Check, Sparkles } from 'lucide-react';
+import { fetchSystemConfig, SystemConfig } from '../utils/limits';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -16,6 +17,11 @@ export default function UpgradeModal({
   featureName = 'this Premium feature',
   onGoToPricing
 }: UpgradeModalProps) {
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+
+  useEffect(() => {
+    if (isOpen) fetchSystemConfig().then(setConfig).catch(() => setConfig(null));
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -91,7 +97,7 @@ export default function UpgradeModal({
                   Experience professional AI without word restrictions
                 </p>
                 <p className="text-xs text-slate-500 dark:text-zinc-400">
-                  Plans start from as low as <span className="font-extrabold text-teal-500">₹99/month</span>
+                  Plans start from <span className="font-extrabold text-teal-500">{config?.pricing_pro || 'current backend pricing'}/month</span>
                 </p>
               </div>
 

@@ -73,9 +73,10 @@ function readDb() {
     db = { users: {}, projects: {}, documents: {}, chats: {}, config: defaultConfig, usage: {} };
   }
 
-  // Backfill if needed
-  if (!db.config || Object.keys(db.config).length === 0) {
-    db.config = defaultConfig;
+  // Backfill new configuration fields while preserving administrator overrides.
+  const mergedConfig = { ...defaultConfig, ...(db.config || {}) };
+  if (JSON.stringify(db.config || {}) !== JSON.stringify(mergedConfig)) {
+    db.config = mergedConfig;
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
   if (!db.usage) {

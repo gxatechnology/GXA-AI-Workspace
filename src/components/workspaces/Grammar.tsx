@@ -1583,7 +1583,7 @@ JSON Structure:
                 <div className="space-y-1">
                   <span className="text-xs text-slate-400">Monthly Billing:</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-extrabold text-slate-800 dark:text-white">₹999</span>
+                    <span className="text-xl font-extrabold text-slate-800 dark:text-white">{config?.pricing_pro || 'Loading…'}</span>
                     <span className="text-[10px] text-slate-400">/ month</span>
                   </div>
                 </div>
