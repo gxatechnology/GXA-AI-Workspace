@@ -43,6 +43,11 @@ function readDb() {
       professional: true,
       custom: true
     },
+    paraphraser_mode_entitlements: {
+      standard: 'free', fluency: 'free', humanize: 'pro_plus', formal: 'pro_plus',
+      academic: 'pro_plus', professional: 'pro_plus', business: 'pro_plus', creative: 'pro_plus',
+      simple: 'pro_plus', expand: 'pro_plus', shorten: 'pro_plus', custom: 'pro_plus'
+    },
     coupons: [
       { code: "GXA40", discount: "40%" },
       { code: "SAVE20", discount: "20%" }
@@ -79,9 +84,17 @@ function readDb() {
     db = { users: {}, projects: {}, documents: {}, chats: {}, config: defaultConfig, usage: {} };
   }
 
-  // Backfill if needed
-  const mergedConfig = { ...defaultConfig, ...(db.config || {}), feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) } };
-  if (JSON.stringify(mergedConfig) !== JSON.stringify(db.config)) {
+  // Backfill newly introduced configuration fields while preserving admin overrides.
+  const mergedConfig = {
+    ...defaultConfig,
+    ...(db.config || {}),
+    feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) },
+    paraphraser_mode_entitlements: {
+      ...defaultConfig.paraphraser_mode_entitlements,
+      ...(db.config?.paraphraser_mode_entitlements || {})
+    }
+  };
+  if (JSON.stringify(db.config || {}) !== JSON.stringify(mergedConfig)) {
     db.config = mergedConfig;
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
