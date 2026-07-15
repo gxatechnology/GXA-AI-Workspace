@@ -22,7 +22,6 @@ import Administration from './workspaces/Administration';
 // Redesigned additional workspaces
 import AllTools from './workspaces/AllTools';
 import Projects from './workspaces/Projects';
-import AIHumanizer from './workspaces/AIHumanizer';
 import AIChat from './workspaces/AIChat';
 import Summarizer from './workspaces/Summarizer';
 
@@ -141,7 +140,7 @@ export default function WorkspaceContent({
     case 'projects':
       return isAuthenticated ? <Projects /> : null;
     case 'ai-humanizer':
-      return <AIHumanizer />;
+      return <AIDetection />;
     case 'ai-chat':
       return (
         <AIChat 

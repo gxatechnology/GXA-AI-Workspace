@@ -33,6 +33,9 @@ function readDb() {
     pdf_persistence_entitlement: 'pro',
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    originality_daily_limit: 5,
+    originality_word_limit: 1500,
+    originality_paid_features: ['humanizer_advanced', 'plagiarism', 'insights'],
     grammar_word_limit: 500,
     grammar_advanced_entitlement: 'pro',
     writer_daily_limit: 5,
@@ -414,6 +417,85 @@ function getGeminiClient(): GoogleGenAI {
   }
   return aiClient;
 }
+
+const isPaidUser = (db: any, userId: string) => ['pro', 'pro_plus', 'premium', 'team', 'enterprise'].includes(String(db.users?.[userId]?.subscription || '').toLowerCase());
+const parseModelJson = (text: string) => JSON.parse(String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+
+app.get('/api/originality/reports', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to view saved reports.' });
+  const db = readDb();
+  res.json({ reports: db.originalityReports?.[userId] || [] });
+});
+
+app.post('/api/originality/reports', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save reports.' });
+  const { type, input, output } = req.body || {};
+  if (!type || !input || output === undefined) return res.status(400).json({ error: 'A completed report is required.' });
+  const db = readDb();
+  if (!db.originalityReports) db.originalityReports = {};
+  if (!db.originalityReports[userId]) db.originalityReports[userId] = [];
+  const report = { id: Math.random().toString(36).slice(2, 10), type: String(type), input: String(input).slice(0, 50000), output, createdAt: new Date().toISOString() };
+  db.originalityReports[userId].unshift(report);
+  db.originalityReports[userId] = db.originalityReports[userId].slice(0, 100);
+  writeDb(db);
+  res.json({ success: true, report });
+});
+
+app.post('/api/originality/analyze', async (req, res) => {
+  const userId = getUserId(req) || 'guest';
+  const { action, text, mode = 'Standard' } = req.body || {};
+  const allowed = ['detect', 'humanize', 'plagiarism', 'insights'];
+  if (!allowed.includes(action)) return res.status(400).json({ error: 'Unsupported originality operation.' });
+  const input = String(text || '').trim();
+  if (!input) return res.status(400).json({ error: 'Text is required.' });
+  const db = readDb();
+  const words = input.split(/\s+/).filter(Boolean).length;
+  if (words > Number(db.config.originality_word_limit || 1500)) return res.status(413).json({ code: 'word_limit', error: 'The text exceeds the configured word limit.' });
+  const paid = isPaidUser(db, userId);
+  const paidFeatures = Array.isArray(db.config.originality_paid_features) ? db.config.originality_paid_features : [];
+  const feature = action === 'plagiarism' ? 'plagiarism' : action === 'insights' ? 'insights' : action === 'humanize' && mode !== 'Standard' ? 'humanizer_advanced' : null;
+  if (feature && paidFeatures.includes(feature) && !paid) return res.status(403).json({ code: 'premium_required', error: 'This feature requires an upgraded plan.' });
+  const today = new Date().toISOString().slice(0, 10);
+  if (!db.usage[userId]) db.usage[userId] = {};
+  if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, originality_checks: 0 };
+  if (!paid && Number(db.usage[userId][today].originality_checks || 0) >= Number(db.config.originality_daily_limit || 5)) return res.status(429).json({ code: 'usage_limit', error: 'Your daily originality limit has been reached.' });
+
+  try {
+    let result: any;
+    if (action === 'plagiarism') {
+      const providerUrl = process.env.PLAGIARISM_API_URL;
+      const providerKey = process.env.PLAGIARISM_API_KEY;
+      if (!providerUrl || !providerKey) return res.status(503).json({ code: 'service_unavailable', error: 'Plagiarism search is not configured. No sources or matches were generated.' });
+      const provider = await fetch(providerUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${providerKey}` }, body: JSON.stringify({ text: input }) });
+      if (!provider.ok) return res.status(503).json({ code: 'service_unavailable', error: 'The plagiarism source service is currently unavailable.' });
+      const data: any = await provider.json();
+      const matches = Array.isArray(data.matches) ? data.matches.filter((match: any) => match?.url && match?.title).map((match: any) => ({ title: String(match.title), url: String(match.url), similarity: Math.max(0, Math.min(100, Number(match.similarity) || 0)), excerpt: String(match.excerpt || '').slice(0, 500) })) : [];
+      result = { matches, checked: true, note: matches.length ? 'Matches are reported by the configured source provider and require manual review.' : 'The configured provider returned no matches. This does not prove originality.' };
+    } else if (action === 'humanize') {
+      const response = await getGeminiClient().models.generateContent({ model: 'gemini-2.5-flash', contents: input, config: { systemInstruction: `Rewrite in ${mode} mode. Preserve the original meaning, claims, names, numbers, quotations, and uncertainty. Do not add facts, examples, citations, or sources. Improve natural flow and clarity without promising detector evasion.` } });
+      result = { text: response.text || '' };
+    } else if (action === 'detect') {
+      const response = await getGeminiClient().models.generateContent({ model: 'gemini-2.5-flash', contents: input, config: { responseMimeType: 'application/json', systemInstruction: 'Analyze stylistic signals probabilistically. Return JSON: {"probability": number 0-100, "confidence":"low"|"medium"|"high", "indicators": string[], "limitations": string}. Never claim authorship as fact. Explain that human and AI writing overlap and results are not proof.' } });
+      const parsed = parseModelJson(response.text || '{}');
+      if (!Number.isFinite(Number(parsed.probability))) throw new Error('The detector returned an invalid probability.');
+      result = { probability: Math.max(0, Math.min(100, Number(parsed.probability))), confidence: ['low', 'medium', 'high'].includes(parsed.confidence) ? parsed.confidence : 'low', indicators: Array.isArray(parsed.indicators) ? parsed.indicators.slice(0, 8).map(String) : [], limitations: String(parsed.limitations || 'This estimate is probabilistic and cannot establish who or what wrote the text.') };
+    } else {
+      const response = await getGeminiClient().models.generateContent({ model: 'gemini-2.5-flash', contents: input, config: { responseMimeType: 'application/json', systemInstruction: 'Return JSON writing analysis: {"readability":"...","tone":"...","clarity":number 0-100,"sentenceVariety":number 0-100,"observations":string[]}. Base observations only on supplied text. Do not infer author identity or invent facts.' } });
+      const parsed = parseModelJson(response.text || '{}');
+      if (!Number.isFinite(Number(parsed.clarity)) || !Number.isFinite(Number(parsed.sentenceVariety))) throw new Error('The insights service returned invalid metrics.');
+      result = { readability: String(parsed.readability || 'Unavailable'), tone: String(parsed.tone || 'Unavailable'), clarity: Math.max(0, Math.min(100, Number(parsed.clarity))), sentenceVariety: Math.max(0, Math.min(100, Number(parsed.sentenceVariety))), observations: Array.isArray(parsed.observations) ? parsed.observations.slice(0, 8).map(String) : [] };
+    }
+    db.usage[userId][today].originality_checks = (db.usage[userId][today].originality_checks || 0) + 1;
+    writeDb(db);
+    res.json({ result, usage: db.usage[userId][today] });
+  } catch (error: any) {
+    console.error('Originality provider error:', error?.message || error);
+    const status = Number(error?.status || 500);
+    res.status(status === 429 ? 429 : 502).json({ code: status === 429 ? 'rate_limit' : 'provider_failure', error: status === 429 ? 'The provider is rate limited. Try again shortly.' : 'The analysis service is currently unavailable.' });
+  }
+});
 
 const planRank = (plan: string) => ({ free: 0, pro: 1, pro_plus: 2, team: 3, enterprise: 4 }[String(plan || 'free').toLowerCase()] ?? 0);
 

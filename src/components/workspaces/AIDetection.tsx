@@ -1,294 +1,61 @@
-import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  ShieldAlert, 
-  UserCheck, 
-  Cpu, 
-  Loader2, 
-  Check, 
-  Copy, 
-  HelpCircle, 
-  AlertTriangle, 
-  Zap, 
-  Smile, 
-  ArrowRight,
-  TrendingDown,
-  Activity
-} from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BarChart3, BookOpen, Check, Copy, Download, FileSearch, History, Loader2, Save, ShieldAlert, Sparkles, X } from 'lucide-react';
+import { fetchSystemConfig, fetchUsage, isUserPremium, SystemConfig, UsageStats } from '../../utils/limits';
 
-export default function AIDetection() {
-  const [inputText, setInputText] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [humanizing, setHumanizing] = useState<boolean>(false);
-  const [aiScore, setAiScore] = useState<number | null>(null);
-  const [humanizedText, setHumanizedText] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'detector' | 'humanizer' | 'analysis' | 'improvement'>('detector');
+type Tab = 'detector' | 'humanizer' | 'plagiarism' | 'citation' | 'insights';
+type Mode = 'Standard' | 'Academic' | 'Professional' | 'Business' | 'Creative' | 'Simple';
+type Style = 'APA' | 'MLA' | 'Chicago' | 'Harvard' | 'IEEE';
+type Report = { id: string; type: string; input: string; output: any; createdAt: string };
+interface Props { currentUser?: any; onOpenUpgradeModal?: () => void; initialTab?: Tab }
+const tabs: Array<{ id: Tab; label: string }> = [{ id: 'detector', label: 'AI Detector' }, { id: 'humanizer', label: 'AI Humanizer' }, { id: 'plagiarism', label: 'Plagiarism Checker' }, { id: 'citation', label: 'Citation Generator' }, { id: 'insights', label: 'Writing Insights' }];
+const modes: Mode[] = ['Standard', 'Academic', 'Professional', 'Business', 'Creative', 'Simple'];
 
-  const handleDetect = async () => {
-    if (!inputText.trim() || loading) return;
-    setLoading(true);
-    try {
-      // Prompt Gemini to act as a linguistic analysis system and generate some statistics
-      const prompt = `Perform an AI writing probability analysis on the following text. 
-      Output a clean evaluation of why it feels written by AI or a Human, including typical vocabulary repetition and syntactic structures.
-      Text: "${inputText}"`;
+function citation(style: Style, source: Record<string, string>) {
+  const author = source.author.trim(), title = source.title.trim(), year = source.year.trim() || 'n.d.', publisher = source.publisher.trim(), url = source.url.trim(), accessed = source.accessed.trim();
+  if (!author || !title) return '';
+  if (style === 'APA') return `${author}. (${year}). ${title}.${publisher ? ` ${publisher}.` : ''}${url ? ` ${url}` : ''}`;
+  if (style === 'MLA') return `${author}. “${title}.”${publisher ? ` ${publisher},` : ''} ${year}.${url ? ` ${url}.` : ''}`;
+  if (style === 'Chicago') return `${author}. “${title}.”${publisher ? ` ${publisher}.` : ''} ${year}.${url ? ` ${url}` : ''}${accessed ? ` Accessed ${accessed}.` : ''}`;
+  if (style === 'Harvard') return `${author} (${year}) ‘${title}’.${publisher ? ` ${publisher}.` : ''}${url ? ` Available at: ${url}${accessed ? ` (Accessed: ${accessed})` : ''}.` : ''}`;
+  return `${author}, “${title},”${publisher ? ` ${publisher},` : ''} ${year}.${url ? ` [Online]. Available: ${url}${accessed ? `. [Accessed: ${accessed}]` : ''}` : ''}`;
+}
 
-      const response = await generateContent({
-        prompt,
-        systemInstruction: 'You are an advanced linguistic forensics tool. Analyze the user text and describe style indicators like repetitive sentence lengths, corporate buzzwords, and high perplexity indicators.'
-      });
+export default function OriginalityCenter({ currentUser, onOpenUpgradeModal, initialTab = 'detector' }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab), [text, setText] = useState(''), [output, setOutput] = useState<any>(null);
+  const [mode, setMode] = useState<Mode>('Standard'), [style, setStyle] = useState<Style>('APA');
+  const [source, setSource] = useState({ author: '', title: '', year: '', publisher: '', url: '', accessed: '' });
+  const [config, setConfig] = useState<SystemConfig | null>(null), [usage, setUsage] = useState<UsageStats | null>(null);
+  const [loading, setLoading] = useState(false), [error, setError] = useState(''), [unavailable, setUnavailable] = useState('');
+  const [copied, setCopied] = useState(false), [compare, setCompare] = useState(false), [reports, setReports] = useState<Report[]>([]), [showHistory, setShowHistory] = useState(false);
+  const userId = currentUser?.email || currentUser?.id || '', premium = isUserPremium(currentUser);
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0, charCount = text.length, wordLimit = config?.originality_word_limit || 1500;
+  const dailyLimit = config?.originality_daily_limit || 5, used = usage?.originality_checks || 0, exceeded = wordCount > wordLimit || (!premium && used >= dailyLimit);
+  const paidFeatures = config?.originality_paid_features || ['humanizer_advanced', 'plagiarism', 'insights'];
+  const locked = (target = tab) => !premium && ((target === 'humanizer' && mode !== 'Standard' && paidFeatures.includes('humanizer_advanced')) || (target === 'plagiarism' && paidFeatures.includes('plagiarism')) || (target === 'insights' && paidFeatures.includes('insights')));
 
-      // Calculate a deterministic but realistic AI percentage based on common AI buzzwords
-      const buzzwords = ['landscape', 'emerged', 'leveraging', 'optimize', 'unprecedented', 'testament', 'furthermore', 'delve', 'vital', 'crucial', 'demystify', 'revolutionize', 'pioneering'];
-      let matches = 0;
-      buzzwords.forEach(word => {
-        if (inputText.toLowerCase().includes(word)) matches++;
-      });
-      
-      const score = Math.min(15 + matches * 18 + Math.floor(Math.random() * 10), 99);
-      setAiScore(score);
-      setHumanizedText(response); // Reuse this box for the analytical breakdown
-    } catch (err) {
-      setAiScore(78);
-      setHumanizedText('Forensic module timed out. Running fallback lexical probability analysis.');
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
+  useEffect(() => { Promise.all([fetchSystemConfig(), fetchUsage(userId || 'guest')]).then(([c, u]) => { setConfig(c); setUsage(u); }); if (userId) fetch('/api/originality/reports', { headers: { Authorization: `Bearer ${userId}` } }).then(r => r.ok ? r.json() : { reports: [] }).then(data => setReports(data.reports || [])); else setReports([]); }, [userId]);
+  useEffect(() => { setOutput(null); setError(''); setUnavailable(''); setCompare(false); }, [tab]);
+  const citationOutput = useMemo(() => citation(style, source), [style, source]);
+  const selectTab = (next: Tab) => { setTab(next); setShowHistory(false); };
+  const run = async () => {
+    if (tab === 'citation') { if (!citationOutput) setError('Author and title are required to create a citation.'); else { setOutput({ text: citationOutput }); setError(''); } return; }
+    if (!text.trim() || loading) return; if (wordCount > wordLimit) return setError(`Reduce the text to ${wordLimit} words or fewer.`);
+    if (locked()) { onOpenUpgradeModal?.(); return; } if (!premium && used >= dailyLimit) { onOpenUpgradeModal?.(); return setError('Your daily originality limit has been reached.'); }
+    setLoading(true); setError(''); setUnavailable('');
+    try { const response = await fetch('/api/originality/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(userId ? { Authorization: `Bearer ${userId}` } : {}) }, body: JSON.stringify({ action: tab === 'detector' ? 'detect' : tab, text, mode }) }); const data = await response.json().catch(() => ({})); if (!response.ok) { if (data.code === 'premium_required' || data.code === 'usage_limit') onOpenUpgradeModal?.(); if (data.code === 'service_unavailable') setUnavailable(data.error); else throw new Error(data.error || 'The service could not complete this request.'); return; } setOutput(data.result); setUsage(data.usage); }
+    catch (cause: any) { setError(cause?.message || 'The analysis service is unavailable. Your text was preserved.'); } finally { setLoading(false); }
   };
+  const outputText = () => output?.text || (tab === 'detector' && output ? `Estimated AI-pattern probability: ${output.probability}% (${output.confidence} confidence)\n\nIndicators:\n${output.indicators?.map((v: string) => `• ${v}`).join('\n') || 'None reported'}\n\nLimitation: ${output.limitations}` : tab === 'plagiarism' && output ? `${output.note}\n${output.matches?.map((m: any) => `${m.similarity}% — ${m.title}\n${m.url}\n${m.excerpt}`).join('\n\n') || ''}` : tab === 'insights' && output ? `Readability: ${output.readability}\nTone: ${output.tone}\nClarity: ${output.clarity}/100\nSentence variety: ${output.sentenceVariety}/100\n\n${output.observations?.map((v: string) => `• ${v}`).join('\n') || ''}` : '');
+  const copy = async () => { await navigator.clipboard.writeText(outputText()); setCopied(true); setTimeout(() => setCopied(false), 1500); };
+  const exportResult = () => { const blob = new Blob([outputText()], { type: 'text/plain' }); const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = `originality-${tab}.txt`; link.click(); URL.revokeObjectURL(url); };
+  const save = async () => { if (!userId) return setError('Sign in to save reports and view history.'); const response = await fetch('/api/originality/reports', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userId}` }, body: JSON.stringify({ type: tab, input: tab === 'citation' ? JSON.stringify(source) : text, output }) }); if (response.ok) { const data = await response.json(); setReports(list => [data.report, ...list]); } else setError('The report could not be saved.'); };
 
-  const handleHumanize = async () => {
-    if (!inputText.trim() || humanizing) return;
-    setHumanizing(true);
-    try {
-      const prompt = `Humanize this text so that it completely bypasses AI detectors. Convert formal, repetitive, robotic constructs into relaxed, authentic, high-impact storytelling with natural sentence variations. Maintain the core message.
-      Text: "${inputText}"`;
-
-      const result = await generateContent({
-        prompt,
-        systemInstruction: 'You are an elite ghostwriter. Your primary job is rewriting texts to pass linguistic analysis filters. Avoid robotic words and maintain a conversational, highly engaging human-like tone.'
-      });
-
-      setInputText(result);
-      setAiScore(Math.floor(Math.random() * 8) + 2); // Score drops to < 10% !
-      setHumanizedText('The text has been rewritten successfully. The syntactic flow was modified to replicate high perplexity and sentence variety typical of natural human expression.');
-    } catch (err) {
-      setHumanizedText('Linguistic restructuring failed. Check network parameters inside settings.');
-    } finally {
-      setHumanizing(false);
-    }
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(inputText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-12 text-left h-full">
-      {/* Menu / Settings panel */}
-      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col h-[calc(100vh-12rem)]">
-        <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2.5 mb-2 block font-mono">
-          Detection Modules
-        </span>
-        <div className="space-y-1">
-          <button
-            onClick={() => setActiveTab('detector')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'detector' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <ShieldAlert className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>AI Detector</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Detect GPT-4, Gemini patterns</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('humanizer')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'humanizer' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <UserCheck className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Smart Humanizer</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Bypass modern detectors</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <Cpu className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Probability Analysis</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Sentence perplexity breakdowns</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('improvement')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'improvement' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <Zap className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Content Improver</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Elevate natural phrasing</span>
-            </div>
-          </button>
-        </div>
-
-        <div className="mt-auto border-t border-zinc-800/80 pt-4 px-2.5 space-y-2">
-          <span className="text-[9px] text-zinc-500 font-mono font-bold uppercase tracking-wider block">Scan Statistics</span>
-          <div className="flex justify-between items-center text-[11px] text-zinc-400">
-            <span>Daily Scan Quota</span>
-            <span className="font-mono text-white">48 / 50</span>
-          </div>
-          <div className="w-full bg-zinc-800 rounded-full h-1">
-            <div className="bg-indigo-500 h-1 rounded-full" style={{ width: '96%' }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Primary Detection Canvas */}
-      <div className="lg:col-span-9 flex flex-col gap-6 h-[calc(100vh-12rem)] min-h-0">
-        {/* Statistics Bar */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 flex flex-wrap gap-4 items-center justify-between shrink-0 shadow-lg">
-          <div className="space-y-0.5">
-            <h3 className="text-md font-bold text-white flex items-center gap-2">
-              <Activity className="h-4.5 w-4.5 text-indigo-400 animate-pulse" /> Linguistic Forensics
-            </h3>
-            <p className="text-xs text-neutral-400">Scan digital copy to determine structural probability of AI origin.</p>
-          </div>
-
-          {/* AI Score Badge */}
-          {aiScore !== null && (
-            <div className="flex items-center gap-3 bg-black/40 border border-zinc-800 px-4 py-2 rounded-lg">
-              <div className="relative h-11 w-11 flex items-center justify-center">
-                <svg className="absolute top-0 left-0 h-full w-full rotate-[-90deg]">
-                  <circle cx="22" cy="22" r="18" stroke="#27272a" strokeWidth="3" fill="none" />
-                  <circle cx="22" cy="22" r="18" 
-                    stroke={aiScore > 50 ? '#ef4444' : aiScore > 20 ? '#f59e0b' : '#10b981'} 
-                    strokeWidth="3" fill="none" 
-                    strokeDasharray={`${2 * Math.PI * 18}`}
-                    strokeDashoffset={`${2 * Math.PI * 18 * (1 - aiScore / 100)}`}
-                    className="transition-all duration-1000"
-                  />
-                </svg>
-                <span className="text-[11px] font-black text-white">{aiScore}%</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-wider block">AI Probability</span>
-                <span className={`text-[11px] font-extrabold ${aiScore > 50 ? 'text-red-400' : aiScore > 20 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {aiScore > 50 ? 'Likely Generative AI' : aiScore > 20 ? 'Mixed Prose' : 'Highly Authentic Human'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input and Forensic Results */}
-        <div className="flex-1 grid gap-6 md:grid-cols-2 min-h-0">
-          {/* Form Side */}
-          <div className="bg-zinc-900/20 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-between min-h-0">
-            <div className="flex-1 flex flex-col min-h-0 space-y-3">
-              <div className="flex justify-between items-center text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-                <span>Verification Terminal</span>
-                {inputText && (
-                  <button onClick={handleCopy} className="text-zinc-500 hover:text-white transition flex items-center gap-1">
-                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    Copy Text
-                  </button>
-                )}
-              </div>
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="w-full flex-1 bg-black/60 border border-zinc-800 rounded-xl p-4 text-xs text-neutral-200 focus:outline-none focus:border-indigo-500 leading-relaxed resize-none font-sans"
-                placeholder="Paste the text you want to evaluate..."
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <button
-                onClick={handleDetect}
-                disabled={loading || !inputText.trim()}
-                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-neutral-300 font-bold text-xs py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 border border-zinc-700"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="h-3.5 w-3.5" /> Run AI Detector
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={handleHumanize}
-                disabled={humanizing || !inputText.trim()}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 shadow-lg"
-              >
-                {humanizing ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Structuring...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-3.5 w-3.5 animate-bounce" /> Bypass & Humanize
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Report Side */}
-          <div className="bg-black border border-zinc-800/80 rounded-xl flex flex-col overflow-hidden min-h-0 shadow-2xl">
-            <div className="bg-zinc-900/60 px-4 py-3 border-b border-zinc-800/80 shrink-0">
-              <span className="text-xs font-mono font-bold text-neutral-400 flex items-center gap-1.5">
-                <Cpu className="h-3.5 w-3.5 text-indigo-400" /> Forensic Analysis Breakdown
-              </span>
-            </div>
-
-            <div className="flex-1 p-5 overflow-y-auto leading-relaxed text-xs text-neutral-200 text-left space-y-4">
-              {aiScore !== null ? (
-                <div className="space-y-4">
-                  <div className="flex items-start gap-2 bg-zinc-900/60 border border-zinc-800 p-3 rounded-lg">
-                    <AlertTriangle className={`h-4 w-4 shrink-0 mt-0.5 ${aiScore > 50 ? 'text-red-400' : 'text-amber-400'}`} />
-                    <div>
-                      <span className="text-[11px] font-extrabold text-white block">Perplexity & Burstitiness Evaluation</span>
-                      <p className="text-[10px] text-zinc-400 mt-0.5">The structural flow exhibits {aiScore > 50 ? 'highly repetitive sentence structures and a lack of natural cadence variations' : 'superb lexical distribution and natural phrase structures typical of experienced human authors'}.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-zinc-900/20 border border-zinc-800 rounded-lg p-4 font-mono text-[11px] text-neutral-300 leading-relaxed whitespace-pre-wrap select-text">
-                    {humanizedText}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-3 px-4">
-                  <Activity className="h-8 w-8 text-zinc-600 animate-pulse" />
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-400">Forensics Console Standby</h4>
-                    <p className="text-[10px] text-zinc-500 mt-0.5 max-w-xs">Paste your document or blog drafts. Run detector to generate live probability scores and vocabulary audits.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <header className="border-b bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"><div className="flex items-center justify-between"><div><h1 className="font-semibold">Originality Center</h1><p className="text-xs text-slate-500">Analyze, revise and reference writing without fabricated evidence.</p></div><button onClick={() => { if (!userId) setError('Sign in to view saved reports.'); else setShowHistory(!showHistory); }} className="flex items-center gap-1 rounded-lg border px-3 py-2 text-xs dark:border-zinc-700"><History className="h-3.5 w-3.5" /> Saved</button></div><nav className="mt-3 flex gap-1 overflow-x-auto">{tabs.map(item => <button key={item.id} onClick={() => selectTab(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${tab === item.id ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300'}`}>{item.label}</button>)}</nav></header>
+    {showHistory ? <div className="flex-1 overflow-y-auto p-4"><div className="mx-auto max-w-3xl"><h2 className="mb-3 font-semibold">Saved reports</h2>{!reports.length && <p className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500 dark:border-zinc-700">No saved reports.</p>}{reports.map(report => <button key={report.id} onClick={() => { setTab(report.type as Tab); setText(report.input); setOutput(report.output); setShowHistory(false); }} className="mb-2 block w-full rounded-xl border bg-white p-3 text-left dark:border-zinc-700 dark:bg-zinc-900"><span className="text-xs font-semibold capitalize">{report.type}</span><span className="ml-2 text-[10px] text-slate-400">{new Date(report.createdAt).toLocaleString()}</span><p className="mt-1 truncate text-xs text-slate-500">{report.input}</p></button>)}</div></div> : <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-2">
+      <section className="flex min-h-[420px] flex-col rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">{tab === 'citation' ? <><div className="mb-3 flex gap-2 overflow-x-auto">{(['APA', 'MLA', 'Chicago', 'Harvard', 'IEEE'] as Style[]).map(item => <button key={item} onClick={() => setStyle(item)} className={`rounded-lg px-3 py-2 text-xs ${style === item ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-zinc-800'}`}>{item}</button>)}</div><div className="grid gap-3 sm:grid-cols-2">{Object.entries(source).map(([key, value]) => <label key={key} className="text-xs capitalize">{key}<input type={key === 'accessed' ? 'date' : 'text'} value={value} onChange={e => setSource(current => ({ ...current, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border p-2.5 dark:border-zinc-700 dark:bg-zinc-950" /></label>)}</div></> : <><div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">Source text</span><span className={`text-[11px] ${wordCount > wordLimit ? 'text-red-500' : wordCount > wordLimit * .85 ? 'text-amber-500' : 'text-slate-400'}`}>{wordCount}/{wordLimit} words · {charCount} characters</span></div>{tab === 'humanizer' && <div className="mb-3 flex gap-1 overflow-x-auto">{modes.map(item => <button key={item} onClick={() => { setMode(item); if (!premium && item !== 'Standard' && paidFeatures.includes('humanizer_advanced')) onOpenUpgradeModal?.(); }} className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs ${mode === item ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-zinc-800'}`}>{item}{!premium && item !== 'Standard' && paidFeatures.includes('humanizer_advanced') ? ' 🔒' : ''}</button>)}</div>}<textarea value={text} onChange={e => setText(e.target.value)} placeholder={tab === 'plagiarism' ? 'Paste text to check against the configured source provider…' : 'Paste or type text here…'} className="min-h-72 flex-1 resize-none rounded-xl border bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-950" /></>}<div className="mt-3 flex items-center justify-between"><span className="text-[11px] text-slate-400">{premium ? 'Plan access enabled' : `${Math.max(0, dailyLimit - used)} free analyses remaining today`}</span><button onClick={run} disabled={loading || (tab !== 'citation' && (!text.trim() || wordCount > wordLimit))} className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-40">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : tab === 'detector' ? <ShieldAlert className="h-4 w-4" /> : tab === 'humanizer' ? <Sparkles className="h-4 w-4" /> : tab === 'citation' ? <BookOpen className="h-4 w-4" /> : tab === 'plagiarism' ? <FileSearch className="h-4 w-4" /> : <BarChart3 className="h-4 w-4" />}{loading ? 'Working…' : tab === 'citation' ? 'Generate citation' : 'Run analysis'}</button></div></section>
+      <section className="flex min-h-[420px] flex-col rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Result</h2>{output && <div className="flex gap-1"><button onClick={copy} title="Copy" className="p-2">{copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}</button><button onClick={save} title="Save" className="p-2"><Save className="h-4 w-4" /></button><button onClick={exportResult} title="Export" className="p-2"><Download className="h-4 w-4" /></button>{tab === 'humanizer' && <button onClick={() => setCompare(!compare)} className="rounded px-2 text-xs">Compare</button>}</div>}</div>{error && <div className="mb-3 flex justify-between rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300"><span>{error}</span><button onClick={() => setError('')}><X className="h-4 w-4" /></button></div>}{unavailable && <div className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"><strong>Service unavailable.</strong> {unavailable}</div>}{!output && !error && !unavailable && <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">No report or score is preloaded. Run a real analysis to see results.</div>}{output && (compare && tab === 'humanizer' ? <div className="grid flex-1 gap-3 sm:grid-cols-2"><div className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-950"><span className="text-[10px] font-semibold uppercase text-slate-400">Original</span><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{text}</p></div><div className="rounded-xl bg-teal-50 p-3 dark:bg-teal-950/20"><span className="text-[10px] font-semibold uppercase text-teal-600">Rewritten</span><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{output.text}</p></div></div> : <div className="flex-1 overflow-y-auto rounded-xl bg-slate-50 p-4 dark:bg-zinc-950"><pre className="whitespace-pre-wrap font-sans text-sm leading-6">{outputText()}</pre>{tab === 'detector' && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">AI detection is probabilistic. This result is not proof of authorship and should not be used as the sole basis for academic, employment, or disciplinary decisions.</p>}</div>)}</section>
+    </div>}
+  </div>;
 }

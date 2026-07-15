@@ -55,6 +55,13 @@
     "pdf_persistence_entitlement": "pro",
     "ocr_pages_limit": 2,
     "grammar_corrections_limit": 5,
+    "originality_daily_limit": 5,
+    "originality_word_limit": 1500,
+    "originality_paid_features": [
+      "humanizer_advanced",
+      "plagiarism",
+      "insights"
+    ],
     "grammar_word_limit": 500,
     "grammar_advanced_entitlement": "pro",
     "writer_daily_limit": 5,

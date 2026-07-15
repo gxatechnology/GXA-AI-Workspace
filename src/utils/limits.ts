@@ -13,6 +13,9 @@ export interface SystemConfig {
   pdf_persistence_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
+  originality_daily_limit?: number;
+  originality_word_limit?: number;
+  originality_paid_features?: Array<'humanizer_advanced' | 'plagiarism' | 'insights'>;
   grammar_word_limit?: number;
   grammar_advanced_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   writer_daily_limit?: number;
@@ -48,6 +51,7 @@ export interface UsageStats {
   pdf_chats?: number;
   ocr_pages: number;
   grammar_corrections: number;
+  originality_checks?: number;
   writer_generations?: number;
 }
 
@@ -76,6 +80,9 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pdf_persistence_entitlement: 'pro',
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    originality_daily_limit: 5,
+    originality_word_limit: 1500,
+    originality_paid_features: ['humanizer_advanced', 'plagiarism', 'insights'],
     grammar_word_limit: 500,
     grammar_advanced_entitlement: 'pro',
     writer_daily_limit: 5,
