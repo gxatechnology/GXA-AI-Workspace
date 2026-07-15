@@ -25,6 +25,8 @@ function readDb() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    grammar_word_limit: 500,
+    grammar_advanced_entitlement: 'pro',
     writer_daily_limit: 5,
     writer_word_limit: 2000,
     writer_premium_templates: ['research-paper', 'literature-review', 'business-proposal', 'sop', 'lor', 'landing-page', 'youtube-script'],

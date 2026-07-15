@@ -5,6 +5,8 @@ export interface SystemConfig {
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
+  grammar_word_limit?: number;
+  grammar_advanced_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   writer_daily_limit?: number;
   writer_word_limit?: number;
   writer_premium_templates?: string[];
@@ -57,6 +59,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    grammar_word_limit: 500,
+    grammar_advanced_entitlement: 'pro',
     writer_daily_limit: 5,
     writer_word_limit: 2000,
     writer_premium_templates: ['research-paper', 'literature-review', 'business-proposal', 'sop', 'lor', 'landing-page', 'youtube-script'],
