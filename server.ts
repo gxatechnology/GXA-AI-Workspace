@@ -29,6 +29,14 @@ function readDb() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    grammar_word_limit: 500,
+    grammar_advanced_entitlement: 'pro',
+    writer_daily_limit: 5,
+    writer_word_limit: 2000,
+    writer_premium_templates: ['research-paper', 'literature-review', 'business-proposal', 'sop', 'lor', 'landing-page', 'youtube-script'],
+    writer_version_entitlement: 'pro',
+    writer_free_exports: ['txt'],
+    writer_paid_exports: ['txt', 'md', 'html'],
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
@@ -40,6 +48,11 @@ function readDb() {
       creative: true,
       professional: true,
       custom: true
+    },
+    paraphraser_mode_entitlements: {
+      standard: 'free', fluency: 'free', humanize: 'pro_plus', formal: 'pro_plus',
+      academic: 'pro_plus', professional: 'pro_plus', business: 'pro_plus', creative: 'pro_plus',
+      simple: 'pro_plus', expand: 'pro_plus', shorten: 'pro_plus', custom: 'pro_plus'
     },
     coupons: [
       { code: "GXA40", discount: "40%" },
@@ -77,9 +90,17 @@ function readDb() {
     db = { users: {}, projects: {}, documents: {}, chats: {}, config: defaultConfig, usage: {} };
   }
 
-  // Backfill if needed
-  const mergedConfig = { ...defaultConfig, ...(db.config || {}), feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) } };
-  if (JSON.stringify(mergedConfig) !== JSON.stringify(db.config)) {
+  // Backfill newly introduced configuration fields while preserving admin overrides.
+  const mergedConfig = {
+    ...defaultConfig,
+    ...(db.config || {}),
+    feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) },
+    paraphraser_mode_entitlements: {
+      ...defaultConfig.paraphraser_mode_entitlements,
+      ...(db.config?.paraphraser_mode_entitlements || {})
+    }
+  };
+  if (JSON.stringify(db.config || {}) !== JSON.stringify(mergedConfig)) {
     db.config = mergedConfig;
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
@@ -389,6 +410,81 @@ function getGeminiClient(): GoogleGenAI {
   }
   return aiClient;
 }
+
+const writerPlanRank = (plan: string) => ({ free: 0, pro: 1, pro_plus: 2, premium: 2, team: 3, enterprise: 4 }[String(plan || 'free').toLowerCase()] ?? 0);
+
+app.get('/api/writer/documents', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to load writer documents.' });
+  const db = readDb();
+  res.json({ documents: db.writerDocuments?.[userId] || [] });
+});
+
+app.put('/api/writer/documents/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save writer documents.' });
+  const { title = 'Untitled', content = '', templateId = 'blog', createVersion = false } = req.body || {};
+  const db = readDb();
+  if (!db.writerDocuments) db.writerDocuments = {};
+  if (!db.writerDocuments[userId]) db.writerDocuments[userId] = [];
+  const index = db.writerDocuments[userId].findIndex((doc: any) => doc.id === req.params.id);
+  const existing = index >= 0 ? db.writerDocuments[userId][index] : null;
+  const required = String(db.config.writer_version_entitlement || 'pro');
+  const mayVersion = writerPlanRank(db.users[userId]?.subscription) >= writerPlanRank(required);
+  const versions = Array.isArray(existing?.versions) ? existing.versions : [];
+  if (createVersion && mayVersion && existing?.content && existing.content !== content) versions.unshift({ id: Math.random().toString(36).slice(2, 10), title: existing.title, content: existing.content, createdAt: new Date().toISOString() });
+  const document = { id: req.params.id, title: String(title).slice(0, 150), content: String(content).slice(0, 250000), templateId: String(templateId), versions: versions.slice(0, 50), updatedAt: new Date().toISOString() };
+  if (index >= 0) db.writerDocuments[userId][index] = document; else db.writerDocuments[userId].unshift(document);
+  writeDb(db);
+  res.json({ success: true, document, versionCreated: Boolean(createVersion && mayVersion) });
+});
+
+app.post('/api/writer/stream', async (req, res) => {
+  const userId = getUserId(req) || 'guest';
+  const { action = 'generate', prompt = '', content = '', selectedText = '', templateId = 'blog', templateName = 'Blog', options = {} } = req.body || {};
+  const allowedActions = ['generate', 'continue', 'rewrite', 'improve', 'expand', 'shorten', 'translate'];
+  if (!allowedActions.includes(action)) return res.status(400).json({ error: 'Unsupported writer action.' });
+  const db = readDb();
+  const userPlan = String(db.users[userId]?.subscription || 'free').toLowerCase();
+  const paid = writerPlanRank(userPlan) >= writerPlanRank('pro');
+  const premiumTemplates = Array.isArray(db.config.writer_premium_templates) ? db.config.writer_premium_templates : [];
+  if (!paid && premiumTemplates.includes(templateId)) return res.status(403).json({ code: 'premium_template', error: 'This template requires an upgraded plan.' });
+  const source = String(selectedText || content || prompt).trim();
+  const words = source ? source.split(/\s+/).length : 0;
+  if (!source) return res.status(400).json({ error: 'Add instructions or editor text first.' });
+  if (words > Number(db.config.writer_word_limit || 2000)) return res.status(413).json({ code: 'word_limit', error: 'The source text exceeds the configured word limit.' });
+  const today = new Date().toISOString().slice(0, 10);
+  if (!db.usage[userId]) db.usage[userId] = {};
+  if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0 };
+  if (!paid && Number(db.usage[userId][today].writer_generations || 0) >= Number(db.config.writer_daily_limit || 5)) return res.status(429).json({ code: 'usage_limit', error: 'Your daily writer limit has been reached.' });
+
+  const actionInstruction: Record<string, string> = {
+    generate: `Create a ${templateName} from these instructions: ${prompt || source}`,
+    continue: `Continue this draft naturally from its ending:\n${content}`,
+    rewrite: `Rewrite the selected passage while preserving meaning:\n${selectedText || content}`,
+    improve: `Improve clarity, flow, grammar, and impact without adding claims:\n${selectedText || content}`,
+    expand: `Expand this passage with useful explanation, but do not invent facts, sources, quotes, or statistics:\n${selectedText || content}`,
+    shorten: `Shorten this passage while preserving its important meaning:\n${selectedText || content}`,
+    translate: `Translate this passage into ${String(options.language || 'English')}. Preserve meaning, names, numbers, formatting, and uncertainty:\n${selectedText || content}`
+  };
+  const systemInstruction = `You are the GXA AI Writer Studio. Write for purpose "${String(options.purpose || 'Inform')}" and audience "${String(options.audience || 'General')}" in a ${String(options.tone || 'Professional')} tone, ${String(options.language || 'English')} language, ${String(options.length || 'Medium')} length, and ${String(options.readingLevel || 'General')} reading level. Keywords: ${String(options.keywords || 'none')}. Never fabricate facts, research findings, sources, citations, testimonials, qualifications, or personal experience. If necessary information is missing, use clearly marked placeholders. Return only the requested draft.`;
+  let closed = false, output = '';
+  res.on('close', () => { if (!res.writableEnded) closed = true; });
+  try {
+    res.status(200); res.setHeader('Content-Type', 'text/event-stream; charset=utf-8'); res.setHeader('Cache-Control', 'no-cache, no-transform'); res.setHeader('Connection', 'keep-alive'); res.flushHeaders();
+    const stream = await getGeminiClient().models.generateContentStream({ model: 'gemini-2.5-flash', contents: actionInstruction[action], config: { systemInstruction } });
+    for await (const chunk of stream) { if (closed) break; const delta = chunk.text || ''; output += delta; res.write(`data: ${JSON.stringify({ type: 'delta', text: delta })}\n\n`); }
+    if (!closed) { res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`); res.end(); }
+    db.usage[userId][today].writer_generations = (db.usage[userId][today].writer_generations || 0) + 1;
+    if (!db.writerRequests) db.writerRequests = [];
+    db.writerRequests.unshift({ userId, action, templateId, status: closed ? 'interrupted' : 'complete', outputCharacters: output.length, createdAt: new Date().toISOString() });
+    db.writerRequests = db.writerRequests.slice(0, 1000); writeDb(db);
+  } catch (error: any) {
+    console.error('Writer provider error:', error?.message || error);
+    const message = /429|rate limit|quota/i.test(String(error?.message || '')) ? 'The provider is rate limited. Try again shortly.' : 'The writing provider is currently unavailable.';
+    if (res.headersSent) { if (!closed) { res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`); res.end(); } } else res.status(502).json({ error: message });
+  }
+});
 
 // Helper to call Gemini with retry and fallback
 async function generateWithRetryAndFallback(prompt: string, config: any) {
