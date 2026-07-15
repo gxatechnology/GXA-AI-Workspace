@@ -26,14 +26,7 @@ export default function HistoryView() {
   const [filter, setFilter] = useState<'all' | 'document' | 'chat' | 'image' | 'system'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const timeline: HistoryItem[] = [
-    { id: 'h-1', time: '14:52', date: 'Today', action: 'Synchronized workspace with local database index', item: 'db.json', category: 'system' },
-    { id: 'h-2', time: '14:23', date: 'Today', action: 'Saved and committed document version revision', item: 'annual_sales_proposal.md', category: 'document' },
-    { id: 'h-3', time: '11:15', date: 'Today', action: 'Generated brutalist graphic illustration asset', item: 'gxa_logo_brutalist_mockup.png', category: 'image' },
-    { id: 'h-4', time: '10:14', date: 'Yesterday', action: 'Created new AI chat co-pilot session', item: 'Chat about local Express port proxy', category: 'chat' },
-    { id: 'h-5', time: '18:30', date: '2026-07-11', action: 'Moved draft_seo_campaign_ideas.txt to Trash', item: 'Trash Bin', category: 'system' },
-    { id: 'h-6', time: '14:15', date: '2026-07-10', action: 'Starred outreach campaign structure template', item: 'E-commerce Cold Outreach Sequence', category: 'document' }
-  ];
+  const timeline: HistoryItem[] = [];
 
   const filteredTimeline = timeline.filter(item => {
     const matchesSearch = item.action.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -143,7 +136,7 @@ export default function HistoryView() {
             <Clock className="h-8 w-8 text-slate-300 dark:text-zinc-700 mx-auto" />
             <h4 className="text-xs font-black text-slate-600 dark:text-zinc-400 uppercase tracking-wide">No Activity Records</h4>
             <p className="text-[11px] text-slate-400 dark:text-zinc-500 max-w-xs mx-auto">
-              Choose other filter parameters or search expressions.
+              Your activity will appear here after you use the workspace.
             </p>
           </div>
         )}
