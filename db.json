@@ -84,6 +84,13 @@
     "pricing_team": "Contact Sales",
     "pricing_enterprise": "Custom Pricing",
     "pricing_currency": "INR",
+    "plans": {
+      "free": { "name": "Free", "monthlyPrice": 0, "billing": "monthly", "features": ["Standard Paraphraser", "Fluency Mode", "Basic Grammar Checker", "Limited AI Chat", "Limited AI Writer", "Limited AI Humanizer", "Limited AI Detector", "Basic Summarizer", "Basic Translator"], "limits": { "words": 500, "requests": 5, "pdfUploads": 1, "pdfSizeMb": 10, "pdfPages": 20, "ocrPages": 2, "storageMb": 100, "historyDays": 0 } },
+      "pro": { "name": "Pro", "monthlyPrice": 99, "billing": "monthly", "features": ["Everything in Free", "Unlimited Standard usage", "Better Grammar suggestions", "PDF Chat", "Projects", "History", "Saved outputs", "Cloud Sync", "Faster processing"], "limits": { "words": 2000, "requests": 100, "pdfUploads": 10, "pdfSizeMb": 25, "pdfPages": 100, "ocrPages": 25, "storageMb": 2048, "historyDays": 30 } },
+      "pro_plus": { "name": "Pro Plus", "monthlyPrice": 149, "billing": "monthly", "features": ["Everything in Pro", "Premium writing modes", "OCR", "Plagiarism Checker", "Citation Generator", "Unlimited AI Humanizer", "Advanced AI Detector", "Larger PDF uploads", "Longer history"], "limits": { "words": 10000, "requests": 500, "pdfUploads": 50, "pdfSizeMb": 100, "pdfPages": 500, "ocrPages": 200, "storageMb": 10240, "historyDays": 365 } },
+      "team": { "name": "Team", "monthlyPrice": null, "priceLabel": "Contact Sales", "billing": "contact", "features": ["Everything in Pro Plus", "Team workspaces", "Centralized billing", "Shared projects"], "limits": { "words": -1, "requests": -1, "pdfUploads": -1, "pdfSizeMb": 250, "pdfPages": 1000, "ocrPages": -1, "storageMb": 51200, "historyDays": 365 } },
+      "enterprise": { "name": "Enterprise", "monthlyPrice": null, "priceLabel": "Custom Pricing", "billing": "custom", "features": ["Everything in Team", "Custom limits", "Priority support", "Enterprise controls"], "limits": { "words": -1, "requests": -1, "pdfUploads": -1, "pdfSizeMb": -1, "pdfPages": -1, "ocrPages": -1, "storageMb": -1, "historyDays": -1 } }
+    },
     "feature_locks": {
       "academic": true,
       "creative": true,
@@ -115,6 +122,7 @@
       }
     ],
     "trial_days": 14,
+    "promotions": [],
     "upgrade_message": "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
   },
   "usage": {

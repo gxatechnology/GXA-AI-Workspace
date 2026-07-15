@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { verifyRazorpaySignature } from './server/billingSecurity';
 
 dotenv.config();
 
@@ -50,6 +51,13 @@ function readDb() {
     pricing_team: "Contact Sales",
     pricing_enterprise: "Custom Pricing",
     pricing_currency: "INR",
+    plans: {
+      free: { name: 'Free', monthlyPrice: 0, billing: 'monthly', features: ['Standard Paraphraser', 'Fluency Mode', 'Basic Grammar Checker', 'Limited AI Chat', 'Limited AI Writer', 'Limited AI Humanizer', 'Limited AI Detector', 'Basic Summarizer', 'Basic Translator'], limits: { words: 500, requests: 5, pdfUploads: 1, pdfSizeMb: 10, pdfPages: 20, ocrPages: 2, storageMb: 100, historyDays: 0 } },
+      pro: { name: 'Pro', monthlyPrice: 99, billing: 'monthly', features: ['Everything in Free', 'Unlimited Standard usage', 'Better Grammar suggestions', 'PDF Chat', 'Projects', 'History', 'Saved outputs', 'Cloud Sync', 'Faster processing'], limits: { words: 2000, requests: 100, pdfUploads: 10, pdfSizeMb: 25, pdfPages: 100, ocrPages: 25, storageMb: 2048, historyDays: 30 } },
+      pro_plus: { name: 'Pro Plus', monthlyPrice: 149, billing: 'monthly', features: ['Everything in Pro', 'Premium writing modes', 'OCR', 'Plagiarism Checker', 'Citation Generator', 'Unlimited AI Humanizer', 'Advanced AI Detector', 'Larger PDF uploads', 'Longer history'], limits: { words: 10000, requests: 500, pdfUploads: 50, pdfSizeMb: 100, pdfPages: 500, ocrPages: 200, storageMb: 10240, historyDays: 365 } },
+      team: { name: 'Team', monthlyPrice: null, priceLabel: 'Contact Sales', billing: 'contact', features: ['Everything in Pro Plus', 'Team workspaces', 'Centralized billing', 'Shared projects'], limits: { words: -1, requests: -1, pdfUploads: -1, pdfSizeMb: 250, pdfPages: 1000, ocrPages: -1, storageMb: 51200, historyDays: 365 } },
+      enterprise: { name: 'Enterprise', monthlyPrice: null, priceLabel: 'Custom Pricing', billing: 'custom', features: ['Everything in Team', 'Custom limits', 'Priority support', 'Enterprise controls'], limits: { words: -1, requests: -1, pdfUploads: -1, pdfSizeMb: -1, pdfPages: -1, ocrPages: -1, storageMb: -1, historyDays: -1 } }
+    },
     feature_locks: {
       academic: true,
       creative: true,
@@ -66,6 +74,7 @@ function readDb() {
       { code: "SAVE20", discount: "20%" }
     ],
     trial_days: 14,
+    promotions: [],
     upgrade_message: "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
   };
 
@@ -101,6 +110,7 @@ function readDb() {
   const mergedConfig = {
     ...defaultConfig,
     ...(db.config || {}),
+    plans: { ...defaultConfig.plans, ...(db.config?.plans || {}) },
     feature_locks: { ...defaultConfig.feature_locks, ...(db.config?.feature_locks || {}) },
     paraphraser_mode_entitlements: {
       ...defaultConfig.paraphraser_mode_entitlements,
@@ -187,20 +197,61 @@ app.get('/api/auth/profile', (req, res) => {
 });
 
 app.post('/api/auth/upgrade', (req, res) => {
+  res.status(410).json({ error: 'Direct upgrades are disabled. Create and verify a billing order.' });
+});
+
+app.get('/api/billing/subscription', (req, res) => {
   const userId = getUserId(req);
-  const { plan } = req.body;
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const db = readDb();
-  const user = db.users[userId];
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  user.subscription = plan;
-  db.users[userId] = user;
-  writeDb(db);
-  res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, subscription: user.subscription, role: user.role } });
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const db = readDb(); const user = db.users[userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ subscription: user.subscription || 'free', billing: user.billing || null, plan: db.config.plans?.[user.subscription || 'free'] || db.config.plans?.free });
+});
+
+app.post('/api/billing/orders', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ code: 'authentication_required', error: 'Sign in before payment.' });
+  const { planId, couponCode = '' } = req.body || {};
+  if (!['pro', 'pro_plus'].includes(planId)) return res.status(400).json({ error: 'Select a payable plan.' });
+  const db = readDb(); const plan = db.config.plans?.[planId];
+  if (!plan || !Number.isFinite(Number(plan.monthlyPrice))) return res.status(400).json({ error: 'The selected plan is not available.' });
+  let amount = Number(plan.monthlyPrice);
+  const coupon = (db.config.coupons || []).find((item: any) => String(item.code).toLowerCase() === String(couponCode).trim().toLowerCase());
+  if (coupon) { const percentage = Math.max(0, Math.min(90, Number(String(coupon.discount).replace(/[^0-9.]/g, '')) || 0)); amount = Math.max(1, Math.round(amount * (1 - percentage / 100))); }
+  const keyId = process.env.RAZORPAY_KEY_ID, keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) return res.status(503).json({ code: 'payment_unavailable', error: 'Payment service is not configured.' });
+  try {
+    const provider = await fetch('https://api.razorpay.com/v1/orders', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}` }, body: JSON.stringify({ amount: amount * 100, currency: 'INR', receipt: `gxa_${Date.now()}`, notes: { userId, planId } }) });
+    const order: any = await provider.json();
+    if (!provider.ok || !order.id) return res.status(502).json({ code: 'order_failed', error: order.error?.description || 'Payment order creation failed.' });
+    if (!db.billingOrders) db.billingOrders = {};
+    db.billingOrders[order.id] = { userId, planId, amountPaise: amount * 100, currency: 'INR', status: 'created', couponCode: coupon?.code || null, createdAt: new Date().toISOString() };
+    writeDb(db);
+    res.json({ orderId: order.id, amount: amount * 100, currency: 'INR', keyId, planName: plan.name });
+  } catch { res.status(502).json({ code: 'order_failed', error: 'Could not connect to the payment service.' }); }
+});
+
+app.post('/api/billing/verify', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature } = req.body || {};
+  const keyId = process.env.RAZORPAY_KEY_ID, keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) return res.status(503).json({ code: 'verification_unavailable', error: 'Payment verification is not configured.' });
+  const db = readDb(); const stored = db.billingOrders?.[orderId];
+  if (!stored || stored.userId !== userId || stored.status === 'verified') return res.status(400).json({ code: 'invalid_order', error: 'This order cannot be verified.' });
+  if (!verifyRazorpaySignature(orderId, paymentId, signature, keySecret)) { stored.status = 'signature_failed'; writeDb(db); return res.status(400).json({ code: 'signature_failed', error: 'Payment signature verification failed.' }); }
+  try {
+    const provider = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, { headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}` } });
+    const payment: any = await provider.json();
+    const validPayment = provider.ok && payment.order_id === orderId && Number(payment.amount) === Number(stored.amountPaise) && payment.currency === 'INR' && ['captured', 'authorized'].includes(payment.status);
+    if (!validPayment) { stored.status = 'payment_unconfirmed'; writeDb(db); return res.status(400).json({ code: 'payment_unconfirmed', error: 'The payment provider has not confirmed this payment.' }); }
+    stored.status = 'verified'; stored.paymentId = paymentId; stored.verifiedAt = new Date().toISOString();
+    db.users[userId].subscription = stored.planId;
+    db.users[userId].billing = { planId: stored.planId, status: 'active', paymentId, activatedAt: stored.verifiedAt };
+    writeDb(db);
+    const user = db.users[userId];
+    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, subscription: user.subscription, role: user.role }, subscription: user.billing });
+  } catch { res.status(502).json({ code: 'verification_failed', error: 'Payment verification could not be completed. You can retry safely.' }); }
 });
 
 // Admin Config & Usage Limits API Endpoints
@@ -211,6 +262,8 @@ app.get('/api/admin/config', (req, res) => {
 
 app.post('/api/admin/config', (req, res) => {
   const db = readDb();
+  const userId = getUserId(req);
+  if (!userId || String(db.users[userId]?.role).toLowerCase() !== 'admin') return res.status(403).json({ error: 'Administrator access is required.' });
   db.config = { ...db.config, ...req.body };
   writeDb(db);
   res.json({ success: true, config: db.config });
@@ -234,6 +287,14 @@ app.get('/api/usage', (req, res) => {
     writeDb(db);
   }
   res.json({ usage: db.usage[userId][today] });
+});
+
+app.get('/api/plan-entitlements', (req, res) => {
+  const userId = getUserId(req);
+  const db = readDb();
+  const planId = userId && db.users[userId] ? String(db.users[userId].subscription || 'free') : 'free';
+  const plan = db.config.plans?.[planId] || db.config.plans?.free;
+  res.json({ planId, currency: db.config.pricing_currency || 'INR', features: plan?.features || [], limits: plan?.limits || {} });
 });
 
 app.post('/api/usage/increment', (req, res) => {

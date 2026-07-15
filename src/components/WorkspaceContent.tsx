@@ -44,6 +44,8 @@ interface WorkspaceContentProps {
   currentUser?: any;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
+  onSubscriptionActivated?: (user: any) => void;
   triggerPremiumLock?: (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => void;
 }
 
@@ -55,7 +57,9 @@ export default function WorkspaceContent({
   setSharedText,
   currentUser,
   isAuthenticated,
-  isAdmin
+  isAdmin,
+  onAuthRequired,
+  onSubscriptionActivated
 }: WorkspaceContentProps) {
   // Simple tool navigation inside dashboard click handlers
   const handleSelectTool = (workspaceId: WorkspaceId, toolId: string) => {
@@ -128,9 +132,9 @@ export default function WorkspaceContent({
     case 'collaboration':
       return <Collaboration />;
     case 'billing':
-      return <Billing />;
+      return <Billing currentUser={currentUser} onOpenPricing={() => onSelectWorkspace('pricing')} />;
     case 'pricing':
-      return <Pricing />;
+      return <Pricing currentUser={currentUser} onAuthRequired={onAuthRequired} onSubscriptionActivated={onSubscriptionActivated} />;
     case 'administration':
       return isAdmin ? <Administration /> : null;
 

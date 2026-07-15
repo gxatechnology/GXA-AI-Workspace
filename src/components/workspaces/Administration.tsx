@@ -48,7 +48,7 @@ interface SupportTicket {
   status: 'Open' | 'Resolved';
 }
 
-export default function Administration() {
+export default function Administration({ currentUser }: { currentUser?: any }) {
   const [activeTab, setActiveTab] = useState<'users' | 'flags' | 'limits' | 'logs' | 'tickets'>('users');
   
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -67,9 +67,11 @@ export default function Administration() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
-    pricing_pro_monthly: "₹999",
-    pricing_pro_yearly: "₹599",
-    pricing_enterprise: "₹3,500",
+    pricing_free: "₹0",
+    pricing_pro: "₹99",
+    pricing_pro_plus: "₹149",
+    pricing_team: "Contact Sales",
+    pricing_enterprise: "Custom Pricing",
     pricing_currency: "INR",
     feature_locks: {
       academic: true,
@@ -104,7 +106,8 @@ export default function Administration() {
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.email || currentUser?.id || ''}`
         },
         body: JSON.stringify(config)
       });
@@ -331,20 +334,20 @@ export default function Administration() {
                   <div className="space-y-3 pt-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Monthly</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Monthly Price (INR)</label>
                         <input 
                           type="text" 
-                          value={config.pricing_pro_monthly}
-                          onChange={(e) => setConfig({ ...config, pricing_pro_monthly: e.target.value })}
+                          value={config.plans?.pro?.monthlyPrice ?? 99}
+                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, pro: { ...config.plans.pro, monthlyPrice: Number(e.target.value) } } })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Yearly (Equivalent/mo)</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Plus Monthly Price (INR)</label>
                         <input 
                           type="text" 
-                          value={config.pricing_pro_yearly}
-                          onChange={(e) => setConfig({ ...config, pricing_pro_yearly: e.target.value })}
+                          value={config.plans?.pro_plus?.monthlyPrice ?? 149}
+                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, pro_plus: { ...config.plans.pro_plus, monthlyPrice: Number(e.target.value) } } })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
@@ -352,11 +355,11 @@ export default function Administration() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Monthly</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Label</label>
                         <input 
                           type="text" 
-                          value={config.pricing_enterprise}
-                          onChange={(e) => setConfig({ ...config, pricing_enterprise: e.target.value })}
+                          value={config.plans?.enterprise?.priceLabel || 'Custom Pricing'}
+                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, enterprise: { ...config.plans.enterprise, priceLabel: e.target.value } } })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
@@ -379,6 +382,14 @@ export default function Administration() {
                         onChange={(e) => setConfig({ ...config, trial_days: Number(e.target.value) })}
                         className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-zinc-400 block">Plan Features and Limits (JSON)</label>
+                      <textarea defaultValue={JSON.stringify(config.plans || {}, null, 2)} onBlur={(e) => { try { setConfig({ ...config, plans: JSON.parse(e.target.value) }); } catch { window.alert('Plan JSON is invalid and was not applied.'); } }} rows={12} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-2 text-[10px] text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-zinc-400 block">Promotions (JSON)</label>
+                      <textarea defaultValue={JSON.stringify(config.promotions || [], null, 2)} onBlur={(e) => { try { setConfig({ ...config, promotions: JSON.parse(e.target.value) }); } catch { window.alert('Promotion JSON is invalid and was not applied.'); } }} rows={4} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-2 text-[10px] text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
                     </div>
                   </div>
                 </div>
