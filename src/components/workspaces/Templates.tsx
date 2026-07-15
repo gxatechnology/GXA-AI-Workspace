@@ -60,8 +60,8 @@ export default function Templates() {
       category: 'Business',
       desc: 'Formal corporate letters with standardized letterheads.',
       fields: [
-        { key: 'sender', label: 'Sender details', placeholder: 'e.g. John Doe, COO of GXA Technologies' },
-        { key: 'recipient', label: 'Recipient details', placeholder: 'e.g. Jane Smith, Director of Security at CloudCorp' },
+        { key: 'sender', label: 'Sender details', placeholder: 'Enter sender name and role' },
+        { key: 'recipient', label: 'Recipient details', placeholder: 'Enter recipient name and role' },
         { key: 'subject', label: 'Subject Line', placeholder: 'e.g. Formalizing Service Level Agreement exemption parameters' },
         { key: 'points', label: 'Core Message Details', placeholder: 'We are requesting an audit extension regarding the port 3000 mapping layers.' }
       ],

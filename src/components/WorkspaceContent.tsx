@@ -22,7 +22,6 @@ import Administration from './workspaces/Administration';
 // Redesigned additional workspaces
 import AllTools from './workspaces/AllTools';
 import Projects from './workspaces/Projects';
-import AIHumanizer from './workspaces/AIHumanizer';
 import AIChat from './workspaces/AIChat';
 import Summarizer from './workspaces/Summarizer';
 
@@ -43,6 +42,8 @@ interface WorkspaceContentProps {
   sharedText: string;
   setSharedText: (text: string) => void;
   currentUser?: any;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
   onAuthRequired?: (mode: 'login' | 'register') => void;
   onSubscriptionActivated?: (user: any) => void;
   triggerPremiumLock?: (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => void;
@@ -54,8 +55,10 @@ export default function WorkspaceContent({
   onOpenUpgradeModal,
   sharedText,
   setSharedText,
-  currentUser
-  ,onAuthRequired,
+  currentUser,
+  isAuthenticated,
+  isAdmin,
+  onAuthRequired,
   onSubscriptionActivated
 }: WorkspaceContentProps) {
   // Simple tool navigation inside dashboard click handlers
@@ -122,8 +125,6 @@ export default function WorkspaceContent({
           onOpenUpgradeModal={onOpenUpgradeModal}
         />
       );
-    case 'documents':
-      return <Documents />;
     case 'prompts':
       return <PromptEngineering />;
     case 'templates':
@@ -135,15 +136,15 @@ export default function WorkspaceContent({
     case 'pricing':
       return <Pricing currentUser={currentUser} onAuthRequired={onAuthRequired} onSubscriptionActivated={onSubscriptionActivated} />;
     case 'administration':
-      return <Administration currentUser={currentUser} />;
+      return isAdmin ? <Administration /> : null;
 
     // Redesigned routes
     case 'all-tools':
       return <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={onOpenUpgradeModal} />;
     case 'projects':
-      return <Projects />;
+      return isAuthenticated ? <Projects /> : null;
     case 'ai-humanizer':
-      return <AIHumanizer />;
+      return <AIDetection />;
     case 'ai-chat':
       return (
         <AIChat 
@@ -164,7 +165,9 @@ export default function WorkspaceContent({
     case 'images':
       return <ImagesView />;
     case 'history':
-      return <HistoryView />;
+      return isAuthenticated ? <HistoryView /> : null;
+    case 'documents':
+      return isAuthenticated ? <Documents /> : null;
     case 'pinned':
       return <PinnedView onSelectWorkspace={onSelectWorkspace} />;
     case 'shared':

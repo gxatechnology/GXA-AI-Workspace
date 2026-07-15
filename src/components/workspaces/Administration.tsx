@@ -51,28 +51,13 @@ interface SupportTicket {
 export default function Administration({ currentUser }: { currentUser?: any }) {
   const [activeTab, setActiveTab] = useState<'users' | 'flags' | 'limits' | 'logs' | 'tickets'>('users');
   
-  const [members, setMembers] = useState<TeamMember[]>([
-    { id: 'm-1', name: 'John Doe', email: 'john@gxa.io', role: 'SuperAdmin', status: 'Active' },
-    { id: 'm-2', name: 'Jane Smith', email: 'jane@gxa.io', role: 'Member', status: 'Active' },
-    { id: 'm-3', name: 'David Chen', email: 'david@gxa.io', role: 'Reviewer', status: 'Active' }
-  ]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
 
-  const [flags, setFlags] = useState<FeatureFlag[]>([
-    { key: 'gemini-pro', name: 'Paid Gemini 3.1 Pro Engine', desc: 'Allows access to deep reasoning and search grounded models.', enabled: true },
-    { key: 'pdf-ocr', name: 'Local PDF OCR Scan Grid', desc: 'Uses advanced spatial positioning models inside PDF viewports.', enabled: true },
-    { key: 'multi-lang', name: 'Bilingual Translation Exemption Layer', desc: 'Enables automatic source syntax detection on translate queries.', enabled: false }
-  ]);
+  const [flags, setFlags] = useState<FeatureFlag[]>([]);
 
-  const [logs] = useState<AuditLog[]>([
-    { id: 'l-1', timestamp: '16:23:44', actor: 'John Doe', event: 'Modified feature flags config block', severity: 'WARN' },
-    { id: 'l-2', timestamp: '15:10:12', actor: 'Jane Smith', event: 'Authorized OAuth credentials pool', severity: 'INFO' },
-    { id: 'l-3', timestamp: '14:02:55', actor: 'System (Port 3000)', event: 'NGINX ingress reverse proxy remapped', severity: 'INFO' }
-  ]);
+  const [logs] = useState<AuditLog[]>([]);
 
-  const [tickets, setTickets] = useState<SupportTicket[]>([
-    { id: 't-1', client: 'Acme Corp', subject: 'Port 3000 container ingress routing mismatch', urgency: 'High', status: 'Open' },
-    { id: 't-2', client: 'HedgeFund Ltd', subject: 'Invoices missing SLA partner credit exemptions', urgency: 'Medium', status: 'Open' }
-  ]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
 
   // Dynamic SaaS Configuration Limits state
   const [config, setConfig] = useState<any>({
@@ -235,7 +220,7 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
             <span>ROOT_PRIVILEGE</span>
           </div>
           <p className="text-[9px] leading-relaxed text-zinc-500 font-mono">
-            Active session: John Doe (Primary Owner). Operations log natively mapped via secure Express ports.
+            Protected administrator session. Operational data loads from the configured backend.
           </p>
         </div>
       </div>
