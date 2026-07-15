@@ -755,20 +755,11 @@ JSON Structure:
             <span className="hidden sm:inline">Help</span>
           </button>
 
-          {/* Inline Admin control button */}
-          <button 
-            onClick={() => setShowAdminPanel(!showAdminPanel)} 
-            aria-label="Toggle admin diagnostics"
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition ${showAdminPanel ? 'bg-teal-500/10 text-teal-600' : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
-          >
-            <Settings2 className="h-4 w-4" />
-            <span>Admin</span>
-          </button>
         </div>
       </header>
 
       {/* Admin Panel Tab overlay block */}
-      {showAdminPanel && (
+      {false && showAdminPanel && (
         <div className="mt-4 p-5 bg-teal-500/5 dark:bg-teal-500/10 border border-teal-500/20 rounded-2xl text-left">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-sm font-bold text-teal-600 dark:text-teal-400 flex items-center gap-1.5">
