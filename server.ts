@@ -27,6 +27,10 @@ function readDb() {
     chat_context_messages: 20,
     chat_premium_required: false,
     pdf_uploads_limit: 3,
+    pdf_file_size_mb: 10,
+    pdf_pages_limit: 50,
+    pdf_chat_messages_limit: 5,
+    pdf_persistence_entitlement: 'pro',
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
     grammar_word_limit: 500,
@@ -410,6 +414,100 @@ function getGeminiClient(): GoogleGenAI {
   }
   return aiClient;
 }
+
+const planRank = (plan: string) => ({ free: 0, pro: 1, pro_plus: 2, team: 3, enterprise: 4 }[String(plan || 'free').toLowerCase()] ?? 0);
+
+app.get('/api/pdf-state/:fingerprint', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to restore PDF workspace data.' });
+  const db = readDb();
+  const required = String(db.config.pdf_persistence_entitlement || 'pro');
+  if (planRank(db.users[userId]?.subscription) < planRank(required)) return res.status(403).json({ code: 'premium_required', error: 'Your plan does not include saved PDF workspaces.' });
+  res.json({ state: db.pdfStates?.[userId]?.[req.params.fingerprint] || null });
+});
+
+app.put('/api/pdf-state/:fingerprint', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save PDF workspace data.' });
+  const db = readDb();
+  const required = String(db.config.pdf_persistence_entitlement || 'pro');
+  if (planRank(db.users[userId]?.subscription) < planRank(required)) return res.status(403).json({ code: 'premium_required', error: 'Your plan does not include saved PDF workspaces.' });
+  if (!db.pdfStates) db.pdfStates = {};
+  if (!db.pdfStates[userId]) db.pdfStates[userId] = {};
+  const { page = 1, bookmarks = [], annotations = [], chat = [] } = req.body || {};
+  db.pdfStates[userId][req.params.fingerprint] = {
+    page: Math.max(1, Number(page) || 1),
+    bookmarks: Array.isArray(bookmarks) ? bookmarks.slice(0, 500).map(Number) : [],
+    annotations: Array.isArray(annotations) ? annotations.slice(0, 500) : [],
+    chat: Array.isArray(chat) ? chat.slice(-100) : [],
+    updatedAt: new Date().toISOString()
+  };
+  writeDb(db);
+  res.json({ success: true });
+});
+
+app.post('/api/pdf/register-upload', (req, res) => {
+  const userId = getUserId(req) || 'guest';
+  const { name, type, size, pages } = req.body || {};
+  const db = readDb();
+  const paidPlan = planRank(db.users[userId]?.subscription) >= planRank('pro');
+  if (!String(name || '').toLowerCase().endsWith('.pdf') || type !== 'application/pdf') return res.status(415).json({ code: 'invalid_file', error: 'A valid PDF file is required.' });
+  if (!Number.isFinite(Number(size)) || Number(size) <= 0) return res.status(400).json({ code: 'empty_file', error: 'The selected PDF is empty.' });
+  if (!paidPlan && Number(size) > Number(db.config.pdf_file_size_mb || 10) * 1024 * 1024) return res.status(413).json({ code: 'file_size', error: 'The PDF exceeds your plan file-size limit.' });
+  if (!paidPlan && Number(pages) > Number(db.config.pdf_pages_limit || 50)) return res.status(413).json({ code: 'page_limit', error: 'The PDF exceeds your plan page limit.' });
+  const today = new Date().toISOString().slice(0, 10);
+  if (!db.usage[userId]) db.usage[userId] = {};
+  if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, pdf_chats: 0, ocr_pages: 0, grammar_corrections: 0 };
+  if (!paidPlan && Number(db.usage[userId][today].pdf_uploads || 0) >= Number(db.config.pdf_uploads_limit || 3)) return res.status(429).json({ code: 'upload_limit', error: 'Your daily PDF upload limit has been reached.' });
+  db.usage[userId][today].pdf_uploads = (db.usage[userId][today].pdf_uploads || 0) + 1;
+  writeDb(db);
+  res.json({ success: true, usage: db.usage[userId][today] });
+});
+
+app.post('/api/pdf/analyze', async (req, res) => {
+  const startedAt = Date.now();
+  const userId = getUserId(req) || 'guest';
+  try {
+    const { action, dataUrl, pageText = '', prompt = '', pageCount = 1, targetLanguage = 'English' } = req.body || {};
+    const allowedActions = ['summary', 'chat', 'ocr', 'tables', 'translate'];
+    if (!allowedActions.includes(action)) return res.status(400).json({ error: 'Unsupported PDF operation.' });
+    const match = String(dataUrl || '').match(/^data:application\/pdf;base64,(.+)$/s);
+    if (!match) return res.status(415).json({ error: 'A valid PDF payload is required.' });
+    const db = readDb();
+    const paidPlan = planRank(db.users[userId]?.subscription) >= planRank('pro');
+    const maxBytes = Number(db.config.pdf_file_size_mb || 10) * 1024 * 1024;
+    if (Math.ceil(match[1].length * 0.75) > maxBytes) return res.status(413).json({ code: 'file_size', error: 'The PDF exceeds the configured file-size limit.' });
+    if (!paidPlan && Number(pageCount) > Number(db.config.pdf_pages_limit || 50)) return res.status(413).json({ code: 'page_limit', error: 'The PDF exceeds the configured page limit.' });
+    const today = new Date().toISOString().slice(0, 10);
+    const usage = db.usage?.[userId]?.[today] || {};
+    if (!paidPlan && action === 'chat' && Number(usage.pdf_chats || 0) >= Number(db.config.pdf_chat_messages_limit || 5)) return res.status(429).json({ code: 'usage_limit', error: 'Your PDF chat limit has been reached.' });
+    if (!paidPlan && action === 'ocr' && Number(usage.ocr_pages || 0) + Number(pageCount) > Number(db.config.ocr_pages_limit || 2)) return res.status(429).json({ code: 'ocr_limit', error: 'This OCR request exceeds your remaining page allowance.' });
+    const instructions: Record<string, string> = {
+      summary: 'Summarize this PDF accurately. Use headings and bullets. Cite supporting pages as [Page N] only when the supplied page text establishes the page.',
+      chat: `Answer this question using only the PDF: ${String(prompt).slice(0, 4000)}. Cite every factual answer with [Page N]. Say when the document does not contain the answer.`,
+      ocr: 'Transcribe the PDF pages faithfully. Preserve headings, lists, and tables. Prefix each page with [Page N]. Do not invent unreadable text.',
+      tables: 'Extract tables from this PDF as Markdown tables. Label each with its source page [Page N]. If there are no tables, state that clearly.',
+      translate: `Translate the PDF content into ${String(targetLanguage).slice(0, 60)}. Preserve structure and page labels [Page N].`
+    };
+    const response = await getGeminiClient().models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: `${instructions[action]}\n\nExtracted page text where available:\n${String(pageText).slice(0, 300000)}` }, { inlineData: { mimeType: 'application/pdf', data: match[1] } }] }]
+    });
+    if (!db.usage[userId]) db.usage[userId] = {};
+    if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, pdf_chats: 0, ocr_pages: 0, grammar_corrections: 0 };
+    if (action === 'chat') db.usage[userId][today].pdf_chats = (db.usage[userId][today].pdf_chats || 0) + 1;
+    if (action === 'ocr') db.usage[userId][today].ocr_pages = (db.usage[userId][today].ocr_pages || 0) + Number(pageCount);
+    if (!db.pdf_requests) db.pdf_requests = [];
+    db.pdf_requests.unshift({ userId, action, status: 'complete', latencyMs: Date.now() - startedAt, createdAt: new Date().toISOString() });
+    db.pdf_requests = db.pdf_requests.slice(0, 1000);
+    writeDb(db);
+    res.json({ text: response.text || '' });
+  } catch (error: any) {
+    console.error('PDF analysis error:', error?.message || error);
+    const status = Number(error?.status || 500);
+    res.status(status === 429 ? 429 : 502).json({ code: status === 429 ? 'rate_limit' : 'provider_failure', error: status === 429 ? 'The AI provider is rate limited. Try again shortly.' : 'The PDF provider could not complete this request.' });
+  }
+});
 
 const writerPlanRank = (plan: string) => ({ free: 0, pro: 1, pro_plus: 2, premium: 2, team: 3, enterprise: 4 }[String(plan || 'free').toLowerCase()] ?? 0);
 

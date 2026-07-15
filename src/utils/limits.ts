@@ -7,6 +7,10 @@ export interface SystemConfig {
   chat_context_messages?: number;
   chat_premium_required?: boolean;
   pdf_uploads_limit: number;
+  pdf_file_size_mb?: number;
+  pdf_pages_limit?: number;
+  pdf_chat_messages_limit?: number;
+  pdf_persistence_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
   grammar_word_limit?: number;
@@ -41,6 +45,7 @@ export interface UsageStats {
   paraphrases: number;
   chats: number;
   pdf_uploads: number;
+  pdf_chats?: number;
   ocr_pages: number;
   grammar_corrections: number;
   writer_generations?: number;
@@ -65,6 +70,10 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     chat_context_messages: 20,
     chat_premium_required: false,
     pdf_uploads_limit: 3,
+    pdf_file_size_mb: 10,
+    pdf_pages_limit: 50,
+    pdf_chat_messages_limit: 5,
+    pdf_persistence_entitlement: 'pro',
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
     grammar_word_limit: 500,
