@@ -2,6 +2,10 @@ export interface SystemConfig {
   paraphrases_limit: number;
   paraphrase_word_limit: number;
   ai_chats_limit: number;
+  chat_attachment_limit?: number;
+  chat_attachment_size_mb?: number;
+  chat_context_messages?: number;
+  chat_premium_required?: boolean;
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
@@ -56,6 +60,10 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
     ai_chats_limit: 5,
+    chat_attachment_limit: 3,
+    chat_attachment_size_mb: 5,
+    chat_context_messages: 20,
+    chat_premium_required: false,
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,

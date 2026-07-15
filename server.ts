@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 // JSON File Database Configuration
 const DB_FILE = path.join(__dirname, 'db.json');
@@ -22,6 +22,10 @@ function readDb() {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
     ai_chats_limit: 5,
+    chat_attachment_limit: 3,
+    chat_attachment_size_mb: 5,
+    chat_context_messages: 20,
+    chat_premium_required: false,
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
@@ -338,36 +342,50 @@ app.delete('/api/documents/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Chat History API Endpoints
+// Conversation history is stored only for authenticated, non-temporary chats.
 app.get('/api/chats', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const db = readDb();
-  res.json({ chats: db.chats[userId] || [] });
+  const chats = (db.chats[userId] || []).filter((chat: any) => chat && chat.id && Array.isArray(chat.messages));
+  res.json({ chats });
 });
 
 app.post('/api/chats', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const { role, content } = req.body;
-  if (!role || !content) return res.status(400).json({ error: 'Role and content are required' });
+  const { conversation } = req.body;
+  if (!conversation?.id || !Array.isArray(conversation.messages)) return res.status(400).json({ error: 'A valid conversation is required' });
   const db = readDb();
   if (!db.chats[userId]) db.chats[userId] = [];
-  const newMsg = {
-    role,
-    content,
-    timestamp: new Date().toISOString()
+  const safeConversation = {
+    id: String(conversation.id),
+    title: String(conversation.title || 'New chat').slice(0, 100),
+    projectId: conversation.projectId ? String(conversation.projectId) : undefined,
+    pinned: Boolean(conversation.pinned),
+    createdAt: String(conversation.createdAt || new Date().toISOString()),
+    updatedAt: new Date().toISOString(),
+    messages: conversation.messages.slice(-100).map((message: any) => ({
+      id: String(message.id),
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.content || '').slice(0, 100000),
+      createdAt: String(message.createdAt || new Date().toISOString()),
+      status: String(message.status || 'complete'),
+      attachments: Array.isArray(message.attachments) ? message.attachments.map((file: any) => ({ name: String(file.name), type: String(file.type), size: Number(file.size) })) : []
+    }))
   };
-  db.chats[userId].push(newMsg);
+  const index = db.chats[userId].findIndex((chat: any) => chat.id === safeConversation.id);
+  if (index >= 0) db.chats[userId][index] = safeConversation;
+  else db.chats[userId].unshift(safeConversation);
   writeDb(db);
-  res.json({ success: true, message: newMsg });
+  res.json({ success: true, conversation: safeConversation });
 });
 
-app.delete('/api/chats', (req, res) => {
+app.delete('/api/chats/:id', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const db = readDb();
-  db.chats[userId] = [];
+  db.chats[userId] = (db.chats[userId] || []).filter((chat: any) => chat.id !== req.params.id);
   writeDb(db);
   res.json({ success: true });
 });
@@ -513,6 +531,112 @@ async function generateWithRetryAndFallback(prompt: string, config: any) {
 
   throw lastError || new Error('All attempts to generate content with Gemini models failed');
 }
+
+function classifyProviderError(error: any) {
+  const status = Number(error?.status || error?.statusCode || error?.error?.code || 500);
+  const message = String(error?.message || 'The AI provider is unavailable.');
+  if (status === 429 || /rate limit|quota/i.test(message)) return { status: 429, code: 'rate_limit', message: 'The AI service is busy. Please try again shortly.' };
+  if (/timeout|timed out/i.test(message)) return { status: 504, code: 'timeout', message: 'The request timed out. Your message was preserved.' };
+  return { status: status >= 400 && status < 600 ? status : 502, code: 'provider_failure', message: 'The AI provider could not complete this request.' };
+}
+
+async function streamFromProvider(messages: any[], attachments: any[], systemInstruction: string) {
+  const ai = getGeminiClient();
+  const contents: any[] = messages.map(message => ({
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: String(message.content || '') }]
+  }));
+  const lastUser = [...contents].reverse().find(message => message.role === 'user');
+  for (const file of attachments) {
+    const match = String(file.content || '').match(/^data:([^;]+);base64,(.+)$/s);
+    if (match && lastUser) lastUser.parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+    else if (file.content && lastUser) lastUser.parts.push({ text: `\nAttachment ${file.name}:\n${String(file.content).slice(0, 100000)}` });
+  }
+  return ai.models.generateContentStream({
+    model: 'gemini-2.5-flash',
+    contents,
+    config: { systemInstruction }
+  });
+}
+
+app.post('/api/chat/stream', async (req, res) => {
+  const startedAt = Date.now();
+  const requestId = Math.random().toString(36).slice(2, 12);
+  const userId = getUserId(req) || 'guest';
+  let output = '';
+  let status = 'started';
+  let closed = false;
+  res.on('close', () => { if (!res.writableEnded) closed = true; });
+
+  const recordRequest = (requestStatus: string, errorCode?: string) => {
+    const db = readDb();
+    if (!db.chat_requests) db.chat_requests = [];
+    db.chat_requests.unshift({
+      id: requestId,
+      userId,
+      status: requestStatus,
+      tokenCount: Math.ceil(output.length / 4),
+      latencyMs: Date.now() - startedAt,
+      errorCode,
+      createdAt: new Date().toISOString()
+    });
+    db.chat_requests = db.chat_requests.slice(0, 1000);
+    writeDb(db);
+  };
+
+  try {
+    const { messages, attachments = [] } = req.body;
+    if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'At least one message is required.' });
+    const db = readDb();
+    const config = db.config || {};
+    const today = new Date().toISOString().split('T')[0];
+    const currentUsage = db.usage?.[userId]?.[today]?.chats || 0;
+    const user = userId === 'guest' ? null : db.users[userId];
+    const premium = ['pro', 'pro_plus', 'premium', 'team', 'enterprise'].includes(String(user?.subscription || '').toLowerCase());
+    if (!premium && currentUsage >= Number(config.ai_chats_limit || 5)) return res.status(429).json({ code: 'usage_limit', error: 'Your daily chat limit has been reached.' });
+    if (config.chat_premium_required && !premium) return res.status(403).json({ code: 'premium_required', error: 'AI Chat requires an upgraded plan.' });
+    if (attachments.length > Number(config.chat_attachment_limit || 3)) return res.status(413).json({ code: 'attachment_limit', error: 'Too many attachments.' });
+    const maxBytes = Number(config.chat_attachment_size_mb || 5) * 1024 * 1024;
+    const allowedTypes = /^(text\/|image\/(png|jpeg|webp|gif)$|application\/(pdf|json)$)/;
+    for (const file of attachments) {
+      if (!allowedTypes.test(String(file.type || ''))) return res.status(415).json({ code: 'unsupported_file', error: `Unsupported file: ${String(file.name || 'attachment')}` });
+      if (Number(file.size || 0) > maxBytes) return res.status(413).json({ code: 'attachment_size', error: `${String(file.name)} exceeds the configured file limit.` });
+    }
+
+    const contextLimit = Number(config.chat_context_messages || 20);
+    const safeMessages = messages.slice(-contextLimit).map((message: any) => ({ role: message.role, content: String(message.content || '').slice(0, 100000) }));
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: 'meta', requestId })}\n\n`);
+    const stream = await streamFromProvider(safeMessages, attachments, 'You are GXA AI Workspace. Give accurate, concise, helpful answers. Use Markdown for headings, lists, tables, and fenced code when useful. Never claim to have read an attachment unless its contents are present.');
+    for await (const chunk of stream) {
+      if (closed) { status = 'interrupted'; break; }
+      const text = chunk.text || '';
+      output += text;
+      res.write(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`);
+    }
+    if (!closed) {
+      status = 'complete';
+      res.write(`data: ${JSON.stringify({ type: 'done', tokenCount: Math.ceil(output.length / 4), latencyMs: Date.now() - startedAt })}\n\n`);
+      res.end();
+    }
+    if (!db.usage[userId]) db.usage[userId] = {};
+    if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0 };
+    db.usage[userId][today].chats = (db.usage[userId][today].chats || 0) + 1;
+    writeDb(db);
+    recordRequest(status);
+  } catch (error: any) {
+    const mapped = classifyProviderError(error);
+    status = mapped.code;
+    if (res.headersSent) {
+      if (!closed) { res.write(`data: ${JSON.stringify({ type: 'error', code: mapped.code, message: mapped.message })}\n\n`); res.end(); }
+    } else res.status(mapped.status).json({ code: mapped.code, error: mapped.message });
+    recordRequest(status, mapped.code);
+  }
+});
 
 // REST endpoint for Gemini API calls
 app.post('/api/gemini/generate', async (req, res) => {
