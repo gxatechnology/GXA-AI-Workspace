@@ -3,6 +3,10 @@ export interface SystemConfig {
   paraphrase_word_limit: number;
   ai_chats_limit: number;
   pdf_uploads_limit: number;
+  pdf_file_size_mb?: number;
+  pdf_pages_limit?: number;
+  pdf_chat_messages_limit?: number;
+  pdf_persistence_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
   pricing_free: string;
@@ -11,6 +15,8 @@ export interface SystemConfig {
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  pricing_pro_monthly?: string;
+  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
@@ -26,6 +32,7 @@ export interface UsageStats {
   paraphrases: number;
   chats: number;
   pdf_uploads: number;
+  pdf_chats?: number;
   ocr_pages: number;
   grammar_corrections: number;
 }
@@ -45,6 +52,10 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     paraphrase_word_limit: 125,
     ai_chats_limit: 5,
     pdf_uploads_limit: 3,
+    pdf_file_size_mb: 10,
+    pdf_pages_limit: 50,
+    pdf_chat_messages_limit: 5,
+    pdf_persistence_entitlement: 'pro',
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
     pricing_free: "₹0",
