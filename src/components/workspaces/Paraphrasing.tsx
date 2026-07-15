@@ -858,15 +858,6 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
             <span>Help</span>
           </button>
 
-          {/* Quick Sandbox Admin Toggle */}
-          <button 
-            onClick={() => setAdminOpen(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/45 dark:bg-amber-950/20 text-xs font-black text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 transition"
-            title="SaaS workspace admin dashboard"
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Admin</span>
-          </button>
         </div>
       </div>
 
@@ -1743,7 +1734,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
 
 
       {/* DRAWER 5: HIGH-FIDELITY SaaS ADMINISTRATIVE OVERLAYS */}
-      {adminOpen && (
+      {false && adminOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs text-left">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-850 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-y-auto">
             

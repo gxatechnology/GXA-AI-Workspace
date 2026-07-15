@@ -785,18 +785,11 @@ Parameter matrix:
             </div>
           )}
 
-          {/* Plan badge and Admin Button */}
+          {/* Runtime status */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-extrabold uppercase bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-600 dark:text-emerald-400 font-mono">
               ● PROMPT PIPELINES ONLINE
             </span>
-            <button 
-              onClick={() => setShowAdminModal(true)}
-              className="p-2 text-slate-400 hover:text-indigo-500 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-850 transition"
-              title="Studio Configuration"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
           </div>
         </div>
       </div>
@@ -1606,7 +1599,7 @@ Parameter matrix:
       {/* ==========================================
           PORTAL DIALOG: SYSTEM ADMIN LIMITS MODAL
           ========================================== */}
-      {showAdminModal && (
+      {false && showAdminModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
             <button 

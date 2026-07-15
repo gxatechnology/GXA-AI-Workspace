@@ -1275,7 +1275,7 @@ Do not use technical or infrastructure jargon. Avoid mock logging. Deliver prist
           </div>
         </div>
 
-        {/* User Account / Admin Footer section */}
+        {/* Chat preferences footer */}
         <div className="p-4 border-t border-slate-200/40 dark:border-zinc-800/60 bg-slate-100/10 dark:bg-zinc-950/20 shrink-0 space-y-3">
           {/* Temporary Chat switch */}
           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-100/50 dark:bg-zinc-950/40 border border-slate-200/20 dark:border-zinc-800/30">
@@ -1296,16 +1296,6 @@ Do not use technical or infrastructure jargon. Avoid mock logging. Deliver prist
             </label>
           </div>
 
-          {/* Admin toggle panel control button */}
-          <button 
-            onClick={() => setShowAdminPanel(!showAdminPanel)}
-            className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition ${showAdminPanel ? 'bg-teal-500/10 text-teal-600' : 'text-slate-400 hover:text-slate-600 dark:hover:text-white'}`}
-          >
-            <span className="flex items-center gap-2">
-              <Sliders className="h-4 w-4" /> Admin Controls
-            </span>
-            <ChevronRight className={`h-4 w-4 transition duration-200 ${showAdminPanel ? 'rotate-90' : ''}`} />
-          </button>
         </div>
       </aside>
 
@@ -1979,7 +1969,7 @@ Do not use technical or infrastructure jargon. Avoid mock logging. Deliver prist
       )}
 
       {/* SUPERADMIN OVERLAY PANEL */}
-      {showAdminPanel && (
+      {false && showAdminPanel && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 text-left">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-fade-in">
             <div className="flex justify-between items-center">
