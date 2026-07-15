@@ -7,6 +7,12 @@ export interface SystemConfig {
   grammar_corrections_limit: number;
   grammar_word_limit?: number;
   grammar_advanced_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
+  writer_daily_limit?: number;
+  writer_word_limit?: number;
+  writer_premium_templates?: string[];
+  writer_version_entitlement?: 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise';
+  writer_free_exports?: string[];
+  writer_paid_exports?: string[];
   pricing_free: string;
   pricing_pro: string;
   pricing_pro_plus: string;
@@ -21,6 +27,7 @@ export interface SystemConfig {
     professional: boolean;
     custom: boolean;
   };
+  paraphraser_mode_entitlements?: Record<string, 'free' | 'pro' | 'pro_plus' | 'team' | 'enterprise'>;
   coupons: Array<{ code: string; discount: string }>;
   trial_days: number;
   upgrade_message: string;
@@ -32,6 +39,7 @@ export interface UsageStats {
   pdf_uploads: number;
   ocr_pages: number;
   grammar_corrections: number;
+  writer_generations?: number;
 }
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
@@ -53,6 +61,12 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     grammar_corrections_limit: 5,
     grammar_word_limit: 500,
     grammar_advanced_entitlement: 'pro',
+    writer_daily_limit: 5,
+    writer_word_limit: 2000,
+    writer_premium_templates: ['research-paper', 'literature-review', 'business-proposal', 'sop', 'lor', 'landing-page', 'youtube-script'],
+    writer_version_entitlement: 'pro',
+    writer_free_exports: ['txt'],
+    writer_paid_exports: ['txt', 'md', 'html'],
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
@@ -64,6 +78,11 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
       creative: true,
       professional: true,
       custom: true
+    },
+    paraphraser_mode_entitlements: {
+      standard: 'free', fluency: 'free', humanize: 'pro_plus', formal: 'pro_plus',
+      academic: 'pro_plus', professional: 'pro_plus', business: 'pro_plus', creative: 'pro_plus',
+      simple: 'pro_plus', expand: 'pro_plus', shorten: 'pro_plus', custom: 'pro_plus'
     },
     coupons: [{ code: "GXA40", discount: "40%" }],
     trial_days: 14,
@@ -123,5 +142,5 @@ export async function incrementUsage(userEmail: string, type: keyof UsageStats, 
 export function isUserPremium(user: any): boolean {
   if (!user) return false;
   const sub = String(user.subscription || '').toLowerCase();
-  return sub === 'pro' || sub === 'premium' || sub === 'enterprise';
+  return sub === 'pro' || sub === 'pro_plus' || sub === 'pro plus' || sub === 'premium' || sub === 'team' || sub === 'enterprise';
 }

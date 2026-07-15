@@ -49,6 +49,20 @@
     "grammar_corrections_limit": 5,
     "grammar_word_limit": 500,
     "grammar_advanced_entitlement": "pro",
+    "writer_daily_limit": 5,
+    "writer_word_limit": 2000,
+    "writer_premium_templates": [
+      "research-paper",
+      "literature-review",
+      "business-proposal",
+      "sop",
+      "lor",
+      "landing-page",
+      "youtube-script"
+    ],
+    "writer_version_entitlement": "pro",
+    "writer_free_exports": ["txt"],
+    "writer_paid_exports": ["txt", "md", "html"],
     "pricing_free": "₹0",
     "pricing_pro": "₹99",
     "pricing_pro_plus": "₹149",
@@ -60,6 +74,20 @@
       "creative": true,
       "professional": true,
       "custom": true
+    },
+    "paraphraser_mode_entitlements": {
+      "standard": "free",
+      "fluency": "free",
+      "humanize": "pro_plus",
+      "formal": "pro_plus",
+      "academic": "pro_plus",
+      "professional": "pro_plus",
+      "business": "pro_plus",
+      "creative": "pro_plus",
+      "simple": "pro_plus",
+      "expand": "pro_plus",
+      "shorten": "pro_plus",
+      "custom": "pro_plus"
     },
     "coupons": [
       {
