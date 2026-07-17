@@ -119,5 +119,5 @@ export async function incrementUsage(userEmail: string, type: keyof UsageStats, 
 export function isUserPremium(user: any): boolean {
   if (!user) return false;
   const sub = String(user.subscription || '').toLowerCase();
-  return sub === 'pro' || sub === 'premium' || sub === 'enterprise';
+  return ['pro', 'pro plus', 'pro_plus', 'premium', 'team', 'enterprise'].includes(sub);
 }
