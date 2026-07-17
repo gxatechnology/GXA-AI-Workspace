@@ -52,7 +52,7 @@ export default function WorkspaceContent(props: Props) {
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
     case 'ocr': content = <OCR currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
-    case 'documents': content = <Documents />; break;
+    case 'documents': content = <Documents currentUser={currentUser} />; break;
     case 'prompts': content = <PromptEngineering />; break;
     case 'templates': content = <Templates />; break;
     case 'collaboration': content = <Collaboration />; break;

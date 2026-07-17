@@ -9,6 +9,10 @@ export interface SystemConfig {
   chat_models: Array<{ id: string; name: string; multimodal: boolean; plan: string }>;
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
+  document_upload_size_mb: number;
+  document_page_limit: number;
+  document_file_count_limit: number;
+  document_supported_types: string[];
   grammar_corrections_limit: number;
   writer_generations_limit: number;
   writer_input_word_limit: number;
@@ -62,6 +66,10 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     chat_models: [{ id: 'default', name: 'GXA AI', multimodal: false, plan: 'free' }],
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
+    document_upload_size_mb: 10,
+    document_page_limit: 100,
+    document_file_count_limit: 5,
+    document_supported_types: ['application/pdf', 'text/plain', 'text/markdown'],
     grammar_corrections_limit: 5,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
