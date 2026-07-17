@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Sparkles, 
   ChevronRight, 
@@ -49,11 +49,11 @@ import {
   PlusCircle,
   FileSignature
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { WRITER_CATEGORIES, WRITER_TEMPLATES, type WriterFieldDefinition } from '../../../shared/writerRegistry';
+import { generateWriterContent, WriterApiError } from '../../utils/writer';
 import { 
   fetchSystemConfig, 
   fetchUsage, 
-  incrementUsage, 
   isUserPremium, 
   SystemConfig, 
   UsageStats 
@@ -69,6 +69,14 @@ interface TemplateItem {
   desc: string;
   placeholderPrompt: string;
   systemInstruction: string;
+  inputFields?: WriterFieldDefinition[];
+  requiredPlan?: 'free' | 'pro' | 'pro_plus';
+  guestAccess?: boolean;
+  keywords?: string[];
+  featured?: boolean;
+  popular?: boolean;
+  isNew?: boolean;
+  outputType?: 'document' | 'outline' | 'email' | 'social' | 'structured';
 }
 
 interface TemplateCategory {
@@ -120,15 +128,17 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   // Active Category & Tool Selection
-  const [activeCategory, setActiveCategory] = useState<string>('general');
+  const [activeCategory, setActiveCategory] = useState<string>('general-writing');
   const [activeTemplateId, setActiveTemplateId] = useState<string>('ai-writer');
   const [templateSearchQuery, setTemplateSearchQuery] = useState<string>('');
   const [favoritesList, setFavoritesList] = useState<string[]>([]);
-  const [recentTemplates, setRecentTemplates] = useState<string[]>(['ai-writer']);
+  const [recentTemplates, setRecentTemplates] = useState<string[]>([]);
 
   // Document Editor State
   const [editorTitle, setEditorTitle] = useState<string>('');
   const [editorContent, setEditorContent] = useState<string>('');
+  const [editorStarted, setEditorStarted] = useState<boolean>(false);
+  const [outlineSections, setOutlineSections] = useState<string[]>([]);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const [lastAutoSaved, setLastAutoSaved] = useState<string>('');
@@ -157,8 +167,10 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   const [keywordsInput, setKeywordsInput] = useState<string>('');
 
   const [promptInput, setPromptInput] = useState<string>('');
+  const [templateValues, setTemplateValues] = useState<Record<string, Record<string, string>>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [generationError, setGenerationError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-  const [streamingOutput, setStreamingOutput] = useState<string>('');
   const [isAborted, setIsAborted] = useState<boolean>(false);
 
   // Projects State
@@ -166,10 +178,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   const [selectedProjectId, setSelectedProjectId] = useState<string>('proj-default');
 
   // Prompt Library State
-  const [promptLibrary, setPromptLibrary] = useState<SavedPrompt[]>([
-    { id: 'lib-1', title: 'SEO SaaS Outline', prompt: 'Create a highly scannable, detailed blog outline targeting developer tooling and edge caches.', favorite: true },
-    { id: 'lib-2', title: 'Technical Thesis Statement', prompt: 'Write a persuasive research statement arguing the scalability of local state-machines in browser-based runtimes.', favorite: false }
-  ]);
+  const [promptLibrary, setPromptLibrary] = useState<SavedPrompt[]>([]);
   const [newPromptTitle, setNewPromptTitle] = useState<string>('');
   const [newPromptText, setNewPromptText] = useState<string>('');
   const [showPromptLibraryModal, setShowPromptLibraryModal] = useState<boolean>(false);
@@ -180,6 +189,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
 
   // Copy Feedback state
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Admin Variables
   const [adminConfig, setAdminConfig] = useState({
@@ -190,112 +200,37 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   });
 
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  const cancelRef = useRef<boolean>(false);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const storedWriterUser = (() => { try { return JSON.parse(localStorage.getItem('gxa_user') || 'null'); } catch { return null; } })();
+  const authenticatedWriterUser = currentUser?.email && !currentUser?.guest ? currentUser : storedWriterUser?.email ? storedWriterUser : null;
+  const isWriterAuthenticated = Boolean(authenticatedWriterUser?.email);
 
   // ==========================================
   // TEMPLATES DATABASE BY CATEGORIES
   // ==========================================
-  const [categories] = useState<TemplateCategory[]>([
-    {
-      id: 'general',
-      name: 'General Writing',
-      icon: Sparkles,
-      templates: [
-        { id: 'ai-writer', name: 'AI Writer', desc: 'General-purpose intelligent draft generator.', placeholderPrompt: 'Write a comprehensive guide explaining the foundational mechanics of WebAssembly.', systemInstruction: 'You are an elite, highly clear technical content author. Draft fully formed structural guidelines.' },
-        { id: 'blog-writer', name: 'Blog Writer', desc: 'SEO-friendly creative blog drafts with headings.', placeholderPrompt: 'Draft an article titled "The Rise of Local-First Web Frameworks in 2026"', systemInstruction: 'You are a professional technology blogger. Write in an engaging, approachable tone with clean layout blocks, bold terms, and lists.' },
-        { id: 'article-writer', name: 'Article Writer', desc: 'Journalistic style analytical long-form articles.', placeholderPrompt: 'Analyze the impact of global decentralized storage standardizations.', systemInstruction: 'You are a veteran staff journalist. Present objective, deeply researched, structured copy.' },
-        { id: 'essay-writer', name: 'Essay Writer', desc: 'Persuasive, argumentative, or academic essays.', placeholderPrompt: 'Draft a persuasive essay debating the social implications of automated physical drone logistics.', systemInstruction: 'You are a university humanities professor. Construct rigorous arguments with robust logical flow.' },
-        { id: 'story-writer', name: 'Story Writer', desc: 'Immersive creative storytelling.', placeholderPrompt: 'A short atmospheric sci-fi narrative about a subsea colony detecting anomalous geothermal radio codes.', systemInstruction: 'You are an award-winning speculative fiction author. Create rich visual imagery, depth, and suspense.' },
-        { id: 'book-writer', name: 'Book Writer', desc: 'Compile rich outline drafts, prologues, and chapter summaries.', placeholderPrompt: 'Draft a outline and prologue for a techno-thriller detailing a decentralized banking hack.', systemInstruction: 'You are an expert novelist. Emphasize pacing, characters, and logical tension.' },
-        { id: 'newsletter', name: 'Newsletter Draft', desc: 'Highly engaging email dispatches and circulars.', placeholderPrompt: 'Write a monthly developer newsletter detailing WebGPU integrations and React 19 hooks.', systemInstruction: 'You are a community builder. Create friendly, structured newsletter columns with bold headlines.' },
-        { id: 'speech', name: 'Speech Writer', desc: 'Keynote and presentation templates.', placeholderPrompt: 'Write a 5-minute keynote address launching a sustainable green server workspace.', systemInstruction: 'You are an executive speechwriter. Frame concepts with memorable pacing, structural pauses, and strong hooks.' },
-        { id: 'script', name: 'Script Writer', desc: 'Audiovisual media, youtube script templates.', placeholderPrompt: 'Draft a detailed technical explainer script for a video about "Why Garbage Collection slow-downs happen".', systemInstruction: 'You are an engaging media producer. Use distinct audio/visual prompts and narrations.' }
-      ]
-    },
-    {
-      id: 'academic',
-      name: 'Academic Writing',
-      icon: GraduationCap,
-      templates: [
-        { id: 'research-paper', name: 'Research Paper', desc: 'Compile academic structures, methods, or abstracts.', placeholderPrompt: 'Draft the methodology section of a study measuring carbon capture tax elasticities.', systemInstruction: 'You are a principal university investigator. Adopt highly formal, scientifically rigorous structures.' },
-        { id: 'academic-abstract', name: 'Abstract Builder', desc: 'Precise summaries of large manuscripts.', placeholderPrompt: 'Synthesize a study testing solid-state battery thermal performance into a 250-word abstract.', systemInstruction: 'You are a peer-review editor. Create concise abstracts specifying context, method, results, and impact.' },
-        { id: 'literature-review', name: 'Literature Review', desc: 'Conceptually group and contrast research studies.', placeholderPrompt: 'Create a literature review outlining advancements in LLM reinforcement learning from 2024 to 2026.', systemInstruction: 'You are a materials science academic. Group studies logically and point out current knowledge gaps.' },
-        { id: 'assignment', name: 'Academic Assignment', desc: 'Tackle course questions, essays, and problems.', placeholderPrompt: 'Draft a clear solution outline exploring key differences between Keynesian and Monetarist economic models.', systemInstruction: 'You are a senior academic tutor. Supply accurate, well-referenced definitions and arguments.' },
-        { id: 'case-study', name: 'Case Study Draft', desc: 'In-depth real-world scenario analysis.', placeholderPrompt: 'Analyze the operational turnaround of a decentralized manufacturing plant during a supply bottleneck.', systemInstruction: 'You are a business school case author. Group data by problem, analysis, and strategic resolution.' },
-        { id: 'thesis-gen', name: 'Thesis Statement', desc: 'Construct highly arguable, specific thesis lines.', placeholderPrompt: 'Generate a PhD-level thesis statement evaluating decentralized zero-knowledge identity tokens.', systemInstruction: 'You are a graduate supervisor. Deliver statements that are arguable, specific, and clear.' },
-        { id: 'dissertation', name: 'Dissertation Outline', desc: 'Rigorous long-form chapter structures.', placeholderPrompt: 'Formulate a dissertation outline on peer-to-peer latency models in serverless contexts.', systemInstruction: 'You are a technical research committee lead. Draft highly detailed, multi-level chapters.' },
-        { id: 'citation-builder', name: 'Citation Builder', desc: 'Format and structure citations cleanly (APA, MLA, Chicago).', placeholderPrompt: 'Format citation: Book by Author J. Watson, title "Decentralized Networks", published 2025 by TechPress.', systemInstruction: 'You are an academic bibliography reference tool. Output exact, pristine academic citation alignments.' }
-      ]
-    },
-    {
-      id: 'business',
-      name: 'Business Writing',
-      icon: Briefcase,
-      templates: [
-        { id: 'biz-proposal', name: 'Business Proposal', desc: 'Persuasive client project proposals.', placeholderPrompt: 'Formulate a SaaS integration proposal for an enterprise global supply-chain platform.', systemInstruction: 'You are a business development director. Focus on requirements, cost metrics, ROI models, and SLAs.' },
-        { id: 'biz-plan', name: 'Business Plan', desc: 'Formal corporate plans for stakeholders and VCs.', placeholderPrompt: 'Create a strategic outline for a cloud-based local storage virtualization company.', systemInstruction: 'You are a startup financial consultant. Synthesize operations, marketing channels, and unit economics.' },
-        { id: 'invoice-notes', name: 'Invoice Builder', desc: 'Text-based transaction logs and outlines.', placeholderPrompt: 'Draft professional invoice descriptions for 16 hours of consulting on high-scale database migrations.', systemInstruction: 'You are a corporate accountant. Write clear, detailed, and polite invoice items.' },
-        { id: 'meeting-notes', name: 'Meeting Notes', desc: 'Executive summaries of raw call transcripts.', placeholderPrompt: 'Summarize transcript: Discussed deployment delay; team decided to deprecate Node 18, assign Rust to Dave.', systemInstruction: 'You are a project coordinator. Highlight clear milestones, action items, and task owners.' },
-        { id: 'minutes', name: 'Minutes of Meeting', desc: 'Official record of executive and board meetings.', placeholderPrompt: 'Record formal decisions from the GXA Technologies annual board sync.', systemInstruction: 'You are an official board secretary. Use a passive, highly objective, and structured layout.' },
-        { id: 'company-profile', name: 'Company Profile', desc: 'Polished introductions for brand assets.', placeholderPrompt: 'Write a compelling company profile describing GXA AI Suite’s mission to unify technical writing.', systemInstruction: 'You are a senior brand strategist. Balance technical precision with visionary positioning.' }
-      ]
-    },
-    {
-      id: 'career',
-      name: 'Career & Resume',
-      icon: FileSignature,
-      templates: [
-        { id: 'resume-builder', name: 'Resume Builder', desc: 'Structured professional CV bullet points.', placeholderPrompt: 'Draft resume entries for a Staff DevOps Engineer with 7 years of AWS and Docker expertise.', systemInstruction: 'You are an executive CV consultant. Write action-oriented bullet points emphasizing quantitative metrics.' },
-        { id: 'resume-optimizer', name: 'Resume Optimizer', desc: 'Tailor resume bullets to bypass ATS filters.', placeholderPrompt: 'Align these points to match a Staff Engineer job listing highlighting Kubernetes, Go, and scale.', systemInstruction: 'You are an ATS parser expert. Inject natural keywords, focus on impact, and eliminate empty fluff.' },
-        { id: 'cover-letter', name: 'Cover Letter', desc: 'Bespoke, role-specific career letters.', placeholderPrompt: 'Write a cover letter applying for a Principal AI Engineer position focusing on serverless inference.', systemInstruction: 'You are a career advocate. Write high-conversion, highly personalized letter formats.' },
-        { id: 'sop-builder', name: 'SOP Builder (SOP)', desc: 'Persuasive Statement of Purpose drafts.', placeholderPrompt: 'Create a Statement of Purpose for admission to a Master’s program in Decentralized Computing.', systemInstruction: 'You are an admissions advisory expert. Construct a compelling narrative of academic milestones and goals.' },
-        { id: 'lor-builder', name: 'Letter of Recommendation', desc: 'Structured peer and supervisor recommendations.', placeholderPrompt: 'Write a recommendation letter for a senior software analyst demonstrating outstanding backend design.', systemInstruction: 'You are a senior technology manager. Use authentic, high-praise professional feedback and examples.' }
-      ]
-    },
-    {
-      id: 'marketing',
-      name: 'Marketing Copy',
-      icon: Mail,
-      templates: [
-        { id: 'landing-page', name: 'Landing Page Copy', desc: 'High-conversion hero sections and sales hooks.', placeholderPrompt: 'Write copy for a developer-centric workspace with secure local vaults and instant compile keys.', systemInstruction: 'You are a premium digital marketing copywriter. Craft high-impact hero titles, value props, and active CTAs.' },
-        { id: 'sales-copy', name: 'Sales Copy', desc: 'Persuasive customer acquisition copy.', placeholderPrompt: 'Create a sales script highlighting time savings from local-first AI translation caches.', systemInstruction: 'You are an expert sales marketer. Apply the AIDA (Attention, Interest, Desire, Action) structure.' },
-        { id: 'google-ads', name: 'Google Ads', desc: 'High-CTR search titles and descriptions.', placeholderPrompt: 'Create 3 Google Ads promoting GXA AI Suite with 30-char headlines and 90-char descriptions.', systemInstruction: 'You are a certified digital search specialist. Focus strictly on CTR hooks, keywords, and length parameters.' },
-        { id: 'seo-article', name: 'SEO Article', desc: 'Structure content specifically to rank on Google search queries.', placeholderPrompt: 'Draft an outline and intro for "How to optimize server-side rendering for complex databases"', systemInstruction: 'You are an SEO optimization authority. Incorporate structural H1/H2 headers and natural keyword clusters.' }
-      ]
-    },
-    {
-      id: 'social',
-      name: 'Social Media',
-      icon: Globe,
-      templates: [
-        { id: 'linkedin-post', name: 'LinkedIn Post', desc: 'Thought leadership updates and insights.', placeholderPrompt: 'Share a story about debugging a critical race condition under extreme pressure on launch day.', systemInstruction: 'You are a tech CEO. Write spacing-optimized, highly engaging LinkedIn copy encouraging community answers.' },
-        { id: 'twitter-x', name: 'Twitter/X Thread', desc: 'Compact, engaging viral information threads.', placeholderPrompt: 'Write a 4-tweet educational thread explaining why local caches outperform centralized endpoints.', systemInstruction: 'You are a modern tech educator. Maintain brevity, clear bullet points, and high educational value.' },
-        { id: 'instagram-caption', name: 'Instagram Caption', desc: 'Aesthetic captions with targeted hashtags.', placeholderPrompt: 'Draft a clean caption for a minimalist mechanical keyboard layout.', systemInstruction: 'You are a creative social strategist. Focus on short visual setups, subtle emojis, and clean hashtags.' }
-      ]
-    },
-    {
-      id: 'creative',
-      name: 'Creative Writing',
-      icon: PenTool,
-      templates: [
-        { id: 'poem', name: 'Poem Generator', desc: 'Rhyming or free-verse classical poetry.', placeholderPrompt: 'A sonnet celebrating the silence of complex data centers in deep underground chambers.', systemInstruction: 'You are a modern poet. Focus on sensory, rich metaphors, timing, and structure.' },
-        { id: 'lyrics', name: 'Lyrics Generator', desc: 'Song lyrics matching specific musical themes.', placeholderPrompt: 'Draft synth-wave lyrics exploring lonely highways and futuristic neon horizons.', systemInstruction: 'You are an expert songwriter. Focus on rhythm, verse-chorus balance, and vivid emotional cues.' }
-      ]
-    },
-    {
-      id: 'developer',
-      name: 'Developer Tools',
-      icon: FileCode,
-      templates: [
-        { id: 'api-doc', name: 'API Documentation', desc: 'Prinstine, clear REST or GraphQL endpoint docs.', placeholderPrompt: 'Document a POST endpoint /api/v1/translate that accepts language, text, and cache flags.', systemInstruction: 'You are a Staff Technical Writer. Write beautiful Markdown API documentation with clear request/response JSON blocks.' },
-        { id: 'readme-gen', name: 'README Builder', desc: 'Professional open-source landing files.', placeholderPrompt: 'Write a comprehensive README for a fast client-side SQLite virtualizer.', systemInstruction: 'You are an open-source advocate. Present features, installation, clean code snippet setups, and licensing.' },
-        { id: 'prompt-writing', name: 'Prompt Optimizer', desc: 'Transform simple ideas into rich instruction blocks.', placeholderPrompt: 'Optimize a basic prompt: "Summarize this log file"', systemInstruction: 'You are a prompt engineer. Supply rigorous system instructions with role, context, task constraints, and format blocks.' }
-      ]
-    }
-  ]);
-
-  // All templates flat array for quick search and commands
-  const allTemplates = categories.flatMap(c => c.templates.map(t => ({ ...t, category: c.name })));
+  // The shared registry is the runtime source of truth for search, forms, routes,
+  // access labels, backend validation identifiers, and analytics-safe IDs.
+  const categories = useMemo<TemplateCategory[]>(() => WRITER_CATEGORIES.map((name) => ({
+    id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+    name,
+    icon: name.includes('Academic') ? GraduationCap : name.includes('Business') || name.includes('Career') ? Briefcase : name.includes('Email') || name.includes('Marketing') ? Mail : name.includes('Social') || name.includes('SEO') ? Globe : name.includes('Creative') || name.includes('Personal') ? PenTool : Sparkles,
+    templates: WRITER_TEMPLATES.filter(template => template.category === name).map(template => ({
+      id: template.id,
+      name: template.name,
+      desc: template.description,
+      placeholderPrompt: template.inputFields[0]?.placeholder || 'Describe what you want to write…',
+      systemInstruction: template.systemInstructionKey,
+      inputFields: template.inputFields,
+      requiredPlan: template.requiredPlan,
+      guestAccess: template.guestAccess,
+      keywords: template.keywords,
+      featured: template.featured,
+      popular: template.popular,
+      isNew: template.isNew,
+      outputType: template.outputType,
+    })),
+  })), []);
+  const allTemplates = useMemo(() => categories.flatMap(c => c.templates.map(t => ({ ...t, category: c.name }))), [categories]);
 
   const activeTemplate = allTemplates.find(t => t.id === activeTemplateId) || allTemplates[0];
 
@@ -307,7 +242,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
       try {
         const sysConfig = await fetchSystemConfig();
         setConfig(sysConfig);
-        const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+        const user = authenticatedWriterUser;
         if (user) {
           setIsPremium(isUserPremium(user));
           setPlanType(user.plan || (isUserPremium(user) ? 'pro' : 'free'));
@@ -346,8 +281,9 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
     loadLimits();
     fetchProjects();
 
-    // Load Local storage states
-    try {
+    // Existing browser-backed drafts are loaded only for authenticated users.
+    // Guests receive a clean studio and are never shown fake cloud persistence.
+    if (isWriterAuthenticated) try {
       const savedVersions = localStorage.getItem('gxa_writer_versions');
       if (savedVersions) setVersions(JSON.parse(savedVersions));
 
@@ -389,6 +325,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
 
   // Safe localStorage saving
   const saveLocalContext = (key: string, value: any) => {
+    if (!isWriterAuthenticated) return;
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {}
@@ -396,10 +333,11 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
 
   // Undo / Redo mechanics
   const handleEditorChange = (val: string) => {
+    setEditorStarted(true);
     setUndoStack(prev => [...prev, editorContent].slice(-50)); // Limit history to 50
     setRedoStack([]);
     setEditorContent(val);
-    localStorage.setItem('gxa_writer_active_content', val);
+    if (isWriterAuthenticated) localStorage.setItem('gxa_writer_active_content', val);
 
     // Dynamic auto-detect language outline
     if (val.length > 50) {
@@ -412,9 +350,12 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
       else setDetectedLanguage('English');
     }
 
-    // Update Auto Save indicator
-    const now = new Date();
-    setLastAutoSaved(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    if (isWriterAuthenticated) {
+      const now = new Date();
+      setLastAutoSaved(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } else {
+      setLastAutoSaved('');
+    }
   };
 
   const triggerUndo = () => {
@@ -450,143 +391,124 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const extension = file.name.toLowerCase().split('.').pop();
+    if (!['txt', 'md', 'markdown'].includes(extension || '') || !['text/plain', 'text/markdown', ''].includes(file.type)) {
+      setGenerationError('Upload a TXT or Markdown file. The current draft is unchanged.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setGenerationError('The file is larger than 2 MB. The current draft is unchanged.');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
       const text = evt.target?.result as string || '';
       setEditorTitle(file.name.replace(/\.[^/.]+$/, ""));
       handleEditorChange(text);
+      setGenerationError('');
     };
+    reader.onerror = () => setGenerationError('The file could not be read. The current draft is unchanged.');
     reader.readAsText(file);
   };
 
   // ------------------------------------------
   // AI STREAMING GENERATION CORE
   // ------------------------------------------
-  const runAiGeneration = async (mode: 'generate' | 'continue' | 'improve' | 'expand' | 'shorten' | 'rewrite' | 'inline' = 'generate', customPrompt = '') => {
-    // Limits Evaluation
-    const dailyChatsLimit = isPremium ? Infinity : (config?.ai_chats_limit || 5);
-    const chatsExecuted = usage?.chats || 0;
-    if (!isPremium && chatsExecuted >= dailyChatsLimit) {
+  const runAiGeneration = async (mode: 'generate' | 'continue' | 'improve' | 'expand' | 'shorten' | 'rewrite' | 'inline' | 'outline' | 'section' = 'generate', customPrompt = '') => {
+    if (loading) return;
+    if (!isPremium && activeTemplate.requiredPlan && activeTemplate.requiredPlan !== 'free') {
       setShowUpgradeModal(true);
       return;
     }
-
-    setLoading(true);
-    setStreamingOutput('');
-    cancelRef.current = false;
-    setIsAborted(false);
-
-    const savedUser = localStorage.getItem('gxa_user');
-    const userEmail = savedUser ? JSON.parse(savedUser).email : 'guest';
-
-    // Build context-rich instructional block
-    let instructionContext = `You are a world-class AI Writing Studio Engine inside the elite GXA technologies workspace.
-Role: ${activeTemplate.name}
-Core instructions: ${activeTemplate.systemInstruction}
-
-Parameter matrix:
-- Target Purpose: ${purpose.toUpperCase()}
-- Content Tone: ${tone.toUpperCase()}
-- Intended Audience: ${audience.toUpperCase()}
-- Language Output: ${targetLanguage}
-- Creative Temperature: ${creativity.toUpperCase()}
-- Professional Expertise Level: ${professionalLevel.toUpperCase()}
-- Writing Style: ${writingStyle.toUpperCase()}
-- Reading Level: ${readingLevel.toUpperCase()}
-- Focus Keywords: ${keywordsInput}
-`;
-
-    let activePrompt = promptInput.trim() || activeTemplate.placeholderPrompt;
-    let finalPrompt = '';
-
-    if (mode === 'generate') {
-      finalPrompt = `${instructionContext}\nTask: Produce a complete, stunning, highly-refined draft based on user prompt: "${activePrompt}". Use clear structure, bullet items, bold headings and rich markdown formatting where necessary. Avoid empty descriptions.`;
-    } else if (mode === 'continue') {
-      finalPrompt = `${instructionContext}\nTask: Expand upon and continue writing the following existing text smoothly and cohesively. Match the style and vocabulary precisely:\n\n"${editorContent}"`;
-    } else if (mode === 'improve') {
-      finalPrompt = `${instructionContext}\nTask: Enhance, clarify, fix mechanical syntax errors, and improve vocabulary in this document:\n\n"${editorContent}"`;
-    } else if (mode === 'expand') {
-      finalPrompt = `${instructionContext}\nTask: Expand this draft significantly, providing granular details, examples, and deep explanation:\n\n"${editorContent}"`;
-    } else if (mode === 'shorten') {
-      finalPrompt = `${instructionContext}\nTask: Compress this draft into a concise, direct, high-impact version with zero fluff:\n\n"${editorContent}"`;
-    } else if (mode === 'rewrite') {
-      finalPrompt = `${instructionContext}\nTask: Completely rewrite the following document text, adopting a different structural layout but maintaining the core underlying arguments:\n\n"${editorContent}"`;
-    } else if (mode === 'inline') {
-      finalPrompt = `${instructionContext}\nTask: Refine and rewrite this specific paragraph based on the instruction: "${customPrompt}". Content: "${highlightedText}"`;
+    const values = templateValues[activeTemplateId] || {};
+    const nextErrors: Record<string, string> = {};
+    for (const field of activeTemplate.inputFields || []) {
+      if (field.required && !String(values[field.id] || '').trim()) nextErrors[field.id] = `${field.label} is required.`;
+      if (String(values[field.id] || '').length > field.maxLength) nextErrors[field.id] = `${field.label} is too long.`;
+    }
+    if (mode === 'generate' && activeTemplateId === 'ai-writer' && !String(values.topic || promptInput).trim()) nextErrors.topic = 'Describe what you want to write.';
+    if (Object.keys(nextErrors).length) {
+      setFieldErrors(nextErrors);
+      setGenerationError('Review the highlighted fields before generating.');
+      return;
     }
 
+    setFieldErrors({});
+    setGenerationError('');
+    setLoading(true);
+    setIsAborted(false);
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     try {
-      const rawResponse = await generateContent({
-        prompt: finalPrompt,
-        systemInstruction: "You are the premium AI Document Assistant. Return exclusively your written draft or requested refinement. Always output structured, clean, publication-ready Markdown."
-      });
+      const response = await generateWriterContent({
+        templateId: activeTemplateId,
+        fields: { ...values, ...(promptInput.trim() && !values.topic ? { topic: promptInput.trim() } : {}) },
+        tone,
+        language: targetLanguage,
+        length: lengthMode,
+        audience,
+        purpose,
+        keywords: keywordsInput.split(',').map(value => value.trim()).filter(Boolean),
+        customInstructions: customPrompt || promptInput,
+        existingContent: editorContent,
+        selectedText: mode === 'inline' ? highlightedText : '',
+        mode,
+        requestId: globalThis.crypto?.randomUUID?.() || `writer-${Date.now()}`,
+      }, controller.signal);
+      const nextContent = mode === 'inline' && selectionRange
+        ? editorContent.slice(0, selectionRange.start) + response.text + editorContent.slice(selectionRange.end)
+        : response.text;
+      handleEditorChange(nextContent);
+      if (mode === 'outline') {
+        const headings = response.text.split('\n').map(line => line.replace(/^\s*(?:[-*]|\d+[.)]|#{1,6})\s*/, '').trim()).filter(line => line.length > 2).slice(0, 20);
+        setOutlineSections(headings);
+      }
+      setShowInlineMenu(false);
 
-      // Streaming typing speed effect simulator
-      let textIndex = 0;
-      const step = Math.ceil(rawResponse.length / 30) || 2;
-      const streamTimer = setInterval(async () => {
-        if (cancelRef.current) {
-          clearInterval(streamTimer);
-          setLoading(false);
-          setIsAborted(true);
-          return;
-        }
-
-        textIndex += step;
-        if (textIndex >= rawResponse.length) {
-          clearInterval(streamTimer);
-          setStreamingOutput('');
-          
-          if (mode === 'inline') {
-            // Replace highlighted selection or place inline
-            if (selectionRange && editorRef.current) {
-              const start = selectionRange.start;
-              const end = selectionRange.end;
-              const nextContent = editorContent.substring(0, start) + rawResponse + editorContent.substring(end);
-              handleEditorChange(nextContent);
-            } else {
-              handleEditorChange(editorContent + '\n\n' + rawResponse);
-            }
-            setShowInlineMenu(false);
-          } else {
-            handleEditorChange(rawResponse);
-          }
-
-          // Create auto Snapshot in Version History
-          const newVersion: DocumentVersion = {
-            id: `v-${Date.now()}`,
-            title: `${activeTemplate.name} Revision (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`,
-            content: rawResponse,
-            timestamp: Date.now()
-          };
-          const updatedVersions = [newVersion, ...versions].slice(0, 30); // Keep up to 30
-          setVersions(updatedVersions);
-          saveLocalContext('gxa_writer_versions', updatedVersions);
-
-          // Update recent list
-          const nextRecent = [activeTemplateId, ...recentTemplates.filter(id => id !== activeTemplateId)].slice(0, 6);
-          setRecentTemplates(nextRecent);
-          saveLocalContext('gxa_writer_recent', nextRecent);
-
-          // Increment AI usage limit counters
-          if (!isPremium && userEmail !== 'guest') {
-            const updatedUsage = await incrementUsage(userEmail, 'chats');
-            setUsage(updatedUsage);
-          }
-          setLoading(false);
-        } else {
-          setStreamingOutput(rawResponse.slice(0, textIndex));
-        }
-      }, 20);
-
-    } catch (e) {
+      if (isWriterAuthenticated) {
+        const newVersion: DocumentVersion = { id: `v-${Date.now()}`, title: `${activeTemplate.name} revision`, content: nextContent, timestamp: Date.now() };
+        const updatedVersions = [newVersion, ...versions].slice(0, 30);
+        setVersions(updatedVersions);
+        saveLocalContext('gxa_writer_versions', updatedVersions);
+      }
+      const nextRecent = [activeTemplateId, ...recentTemplates.filter(id => id !== activeTemplateId)].slice(0, 6);
+      setRecentTemplates(nextRecent);
+      saveLocalContext('gxa_writer_recent', nextRecent);
+      setUsage(previous => previous ? { ...previous, writer_generations: response.usage.writer_generations } : previous);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setIsAborted(true);
+        setGenerationError('Generation stopped. Your existing draft is preserved.');
+      } else if (error instanceof WriterApiError) {
+        if (error.field) setFieldErrors({ [error.field]: error.message });
+        if (error.status === 403 || error.code === 'REQUEST_LIMIT' || error.code === 'WORD_LIMIT') setShowUpgradeModal(true);
+        setGenerationError(error.message);
+      } else {
+        setGenerationError('The writing service is unavailable. Your form and draft are preserved. Try again.');
+      }
+    } finally {
       setLoading(false);
-      setStreamingOutput('Generation timed out. Verify your API Key and workspace limits under the settings menu.');
+      requestControllerRef.current = null;
     }
   };
 
+  const handleSelectTemplate = (template: TemplateItem) => {
+    if (!isPremium && template.requiredPlan && template.requiredPlan !== 'free') {
+      setShowUpgradeModal(true);
+      return;
+    }
+    setActiveTemplateId(template.id);
+    setFieldErrors({});
+    setGenerationError('');
+    setMobileTab('assistant');
+  };
+
   const handleCancelGeneration = () => {
-    cancelRef.current = true;
+    requestControllerRef.current?.abort();
+    setLoading(false);
+    setIsAborted(true);
   };
 
   // ------------------------------------------
@@ -642,8 +564,7 @@ Parameter matrix:
   const handleApplySlashCommand = (templateId: string) => {
     const selected = allTemplates.find(t => t.id === templateId);
     if (selected) {
-      setActiveTemplateId(templateId);
-      setPromptInput(selected.placeholderPrompt);
+      handleSelectTemplate(selected);
       setShowSlashMenu(false);
       // Strip out the trailing slash
       if (editorContent.endsWith('/')) {
@@ -657,18 +578,20 @@ Parameter matrix:
   // ------------------------------------------
   const exportDocument = (format: 'txt' | 'md' | 'html' | 'docx') => {
     if (!editorContent.trim()) return;
-    const filename = `${editorTitle || activeTemplate.name || 'document'}.${format}`;
+    const safeTitle = (editorTitle || activeTemplate.name || 'document').replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'document';
+    const filename = `${safeTitle}.${format}`;
     let outputData = '';
     let mimeType = 'text/plain';
 
     if (format === 'html') {
+      const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
       mimeType = 'text/html';
       outputData = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${editorTitle || activeTemplate.name}</title>
+  <title>${escapeHtml(editorTitle || activeTemplate.name)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 0 20px; }
     h1, h2, h3 { color: #111827; }
@@ -677,8 +600,8 @@ Parameter matrix:
   </style>
 </head>
 <body>
-  <h1>${editorTitle || activeTemplate.name}</h1>
-  <div>${editorContent.replace(/\n/g, '<br />')}</div>
+  <h1>${escapeHtml(editorTitle || activeTemplate.name)}</h1>
+  <div>${escapeHtml(editorContent).replace(/\n/g, '<br />')}</div>
 </body>
 </html>`;
     } else if (format === 'md') {
@@ -715,6 +638,11 @@ Parameter matrix:
 
   // Prompt Library Actions
   const handleSavePromptToLib = () => {
+    if (!isWriterAuthenticated) {
+      setShowPromptLibraryModal(false);
+      setGenerationError('Log in or register to save reusable prompts. Your entries are preserved for this session.');
+      return;
+    }
     if (!newPromptTitle || !newPromptText) return;
     const newPrompt: SavedPrompt = {
       id: `prompt-${Date.now()}`,
@@ -736,13 +664,67 @@ Parameter matrix:
     saveLocalContext('gxa_writer_saved_prompts', updated);
   };
 
+  const handleSaveDocument = async () => {
+    const user = authenticatedWriterUser;
+    if (!user?.email) {
+      setGenerationError('Log in or register to save this document. Your current work is preserved.');
+      return;
+    }
+    if (!editorContent.trim()) {
+      setGenerationError('Add content before saving a document.');
+      return;
+    }
+    setSaveStatus('saving');
+    try {
+      const response = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` },
+        body: JSON.stringify({
+          name: editorTitle.trim() || activeTemplate.name,
+          content: editorContent,
+          type: 'Writer Document',
+          toolUsed: 'AI Writer Studio',
+          projectId: selectedProjectId === 'proj-default' ? undefined : selectedProjectId,
+          metadata: { templateId: activeTemplateId, fields: templateValues[activeTemplateId] || {}, tone, language: targetLanguage, length: lengthMode },
+        }),
+      });
+      if (!response.ok) throw new Error('save failed');
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1800);
+    } catch {
+      setSaveStatus('error');
+      setGenerationError('The document could not be saved. Your current work is preserved. Try again.');
+    }
+  };
+
+  const handleCreateProject = async () => {
+    const user = authenticatedWriterUser;
+    if (!user?.email) {
+      setGenerationError('Log in or register to create a project. Your current work is preserved.');
+      return;
+    }
+    const name = window.prompt('Project name');
+    if (!name?.trim()) return;
+    try {
+      const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` }, body: JSON.stringify({ name: name.trim(), type: 'Writing', toolUsed: 'AI Writer Studio', previewText: editorContent.slice(0, 160) }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error('project failed');
+      setProjects(previous => [payload.project, ...previous]);
+      setSelectedProjectId(payload.project.id);
+    } catch {
+      setGenerationError('The project could not be created. Your current work is preserved.');
+    }
+  };
+
   // ------------------------------------------
   // SELECTION FILTER
   // ------------------------------------------
   const getFilteredTemplates = () => {
     return allTemplates.filter(t => 
       t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
-      t.desc.toLowerCase().includes(templateSearchQuery.toLowerCase())
+      t.desc.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+      String(t.category || '').toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+      (t.keywords || []).some(keyword => keyword.includes(templateSearchQuery.toLowerCase()))
     );
   };
 
@@ -773,8 +755,8 @@ Parameter matrix:
           {!isPremium && usage && config && (
             <div className="hidden sm:flex items-center gap-3 bg-slate-100/60 dark:bg-zinc-900/60 p-2 rounded-xl border border-slate-200/40 dark:border-zinc-800">
               <div className="text-[10px] text-slate-400 text-left">
-                <span className="block font-bold">Remaining Writes: <strong className="text-indigo-600 dark:text-indigo-400">{Math.max(0, (config?.ai_chats_limit || 5) - (usage?.chats || 0))}</strong></span>
-                <span className="block font-bold">Word Limit / draft: <strong className="text-indigo-600 dark:text-indigo-400">{adminConfig.maxFreeWordCount} words</strong></span>
+                <span className="block font-bold">Remaining Writes: <strong className="text-indigo-600 dark:text-indigo-400">{Math.max(0, (config.writer_generations_limit || 5) - (usage.writer_generations || 0))}</strong></span>
+                <span className="block font-bold">Input limit: <strong className="text-indigo-600 dark:text-indigo-400">{config.writer_input_word_limit || 1500} words</strong></span>
               </div>
               <button 
                 onClick={() => setShowUpgradeModal(true)}
@@ -788,18 +770,21 @@ Parameter matrix:
           {/* Plan badge and Admin Button */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-extrabold uppercase bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-600 dark:text-emerald-400 font-mono">
-              ● PROMPT PIPELINES ONLINE
+              Backend generation
             </span>
-            <button 
-              onClick={() => setShowAdminModal(true)}
-              className="p-2 text-slate-400 hover:text-indigo-500 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-850 transition"
-              title="Studio Configuration"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            {currentUser?.role === 'SuperAdmin' && (
+              <button onClick={() => setShowAdminModal(true)} className="p-2 text-slate-400 hover:text-indigo-500 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-850 transition" title="Studio Configuration"><Settings className="h-4 w-4" /></button>
+            )}
           </div>
         </div>
       </div>
+
+      {generationError && (
+        <div id="writer-generation-error" role="alert" className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+          <span>{generationError}</span>
+          <button onClick={() => setGenerationError('')} className="rounded-lg p-1 hover:bg-red-100 dark:hover:bg-red-900/40" aria-label="Dismiss writing error"><X className="h-4 w-4" /></button>
+        </div>
+      )}
 
       {/* Main Studio Body Grid */}
       <div className="flex-1 flex flex-row overflow-hidden relative">
@@ -857,27 +842,12 @@ Parameter matrix:
               <div className="space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest px-2.5 block">Search Results</span>
                 {getFilteredTemplates().map((tool) => (
-                  <button
-                    key={tool.id}
-                    onClick={() => {
-                      setActiveTemplateId(tool.id);
-                      setPromptInput(tool.placeholderPrompt);
-                      setMobileTab('editor');
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-between ${
-                      activeTemplateId === tool.id 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/60 dark:hover:bg-zinc-850/60'
-                    }`}
-                  >
-                    <span className="truncate">{tool.name}</span>
-                    <button 
-                      onClick={(e) => toggleFavoriteTemplate(tool.id, e)}
-                      className="p-1 rounded text-slate-400 hover:text-amber-500 transition"
-                    >
-                      <Bookmark className={`h-3 w-3 ${favoritesList.includes(tool.id) ? 'fill-amber-500 text-amber-500' : ''}`} />
+                  <div key={tool.id} className={`flex w-full items-center rounded-lg text-xs font-bold transition ${activeTemplateId === tool.id ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/60 dark:hover:bg-zinc-850/60'}`}>
+                    <button onClick={() => handleSelectTemplate(tool)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left" aria-label={`Open ${tool.name}. ${tool.requiredPlan === 'free' ? 'Free' : 'Premium'} template`}>
+                      <span className="block truncate">{tool.name}</span><span className="text-[8px] font-semibold opacity-70">{tool.requiredPlan === 'free' ? 'Free' : tool.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro'}{tool.isNew ? ' · New' : ''}</span>
                     </button>
-                  </button>
+                    <button onClick={(e) => toggleFavoriteTemplate(tool.id, e)} className="m-1 rounded p-1 text-slate-400 transition hover:text-amber-500" aria-label={`${favoritesList.includes(tool.id) ? 'Remove' : 'Add'} ${tool.name} ${favoritesList.includes(tool.id) ? 'from' : 'to'} favorites`}><Bookmark className={`h-3 w-3 ${favoritesList.includes(tool.id) ? 'fill-amber-500 text-amber-500' : ''}`} /></button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -893,9 +863,7 @@ Parameter matrix:
                         <button
                           key={tool.id}
                           onClick={() => {
-                            setActiveTemplateId(tool.id);
-                            setPromptInput(tool.placeholderPrompt);
-                            setMobileTab('editor');
+                            handleSelectTemplate(tool);
                           }}
                           className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-between ${
                             activeTemplateId === tool.id 
@@ -903,7 +871,7 @@ Parameter matrix:
                               : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/60 dark:hover:bg-zinc-850/60'
                           }`}
                         >
-                          <span className="truncate">{tool.name}</span>
+                          <span className="min-w-0"><span className="block truncate">{tool.name}</span><span className="text-[8px] font-semibold opacity-70">{tool.requiredPlan === 'free' ? 'Free' : tool.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro'}</span></span>
                           <Bookmark className="h-3 w-3 fill-amber-500 text-amber-500 shrink-0" />
                         </button>
                       );
@@ -924,27 +892,10 @@ Parameter matrix:
                       </div>
                       <div className="space-y-0.5">
                         {cat.templates.map((tool) => (
-                          <button
-                            key={tool.id}
-                            onClick={() => {
-                              setActiveTemplateId(tool.id);
-                              setPromptInput(tool.placeholderPrompt);
-                              setMobileTab('editor');
-                            }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-between ${
-                              activeTemplateId === tool.id 
-                                ? 'bg-indigo-600 text-white shadow-md' 
-                                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/60 dark:hover:bg-zinc-850/60'
-                            }`}
-                          >
-                            <span className="truncate">{tool.name}</span>
-                            <span 
-                              onClick={(e) => toggleFavoriteTemplate(tool.id, e)}
-                              className="p-1 rounded text-slate-400 hover:text-amber-500 transition shrink-0"
-                            >
-                              <Bookmark className={`h-3 w-3 ${favoritesList.includes(tool.id) ? 'fill-amber-500 text-amber-500' : ''}`} />
-                            </span>
-                          </button>
+                          <div key={tool.id} className={`flex w-full items-center rounded-lg text-xs font-bold transition ${activeTemplateId === tool.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100/60 dark:hover:bg-zinc-850/60'}`}>
+                            <button onClick={() => handleSelectTemplate(tool)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left" aria-label={`Open ${tool.name}. ${tool.requiredPlan === 'free' ? 'Free' : 'Premium'} template`}><span className="block truncate">{tool.name}</span><span className="text-[8px] font-semibold opacity-70">{tool.requiredPlan === 'free' ? 'Free' : tool.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro'}{tool.isNew ? ' · New' : ''}</span></button>
+                            <button onClick={(e) => toggleFavoriteTemplate(tool.id, e)} className="m-1 shrink-0 rounded p-1 text-slate-400 transition hover:text-amber-500" aria-label={`${favoritesList.includes(tool.id) ? 'Remove' : 'Add'} ${tool.name} ${favoritesList.includes(tool.id) ? 'from' : 'to'} favorites`}><Bookmark className={`h-3 w-3 ${favoritesList.includes(tool.id) ? 'fill-amber-500 text-amber-500' : ''}`} /></button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -980,10 +931,7 @@ Parameter matrix:
                 ))}
               </select>
               <button 
-                onClick={() => {
-                  const name = prompt('Enter new Project Name:');
-                  if (name) setProjects(p => [...p, { id: `p-${Date.now()}`, name }]);
-                }}
+                onClick={handleCreateProject}
                 className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition shrink-0"
                 title="Create Project"
               >
@@ -1081,9 +1029,26 @@ Parameter matrix:
               </div>
             )}
 
+            {(activeTemplate.outputType === 'outline' || ['blog-writer', 'article-writer', 'seo-article', 'research-paper'].includes(activeTemplateId)) && (
+              <section className="mb-3 rounded-xl border border-slate-200 bg-white/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/50" aria-labelledby="writer-outline-heading">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div><h2 id="writer-outline-heading" className="text-xs font-black">Content outline</h2><p className="text-[10px] text-slate-500">Generate, review, and edit headings before drafting.</p></div>
+                  <div className="flex gap-2"><button onClick={() => runAiGeneration('outline')} disabled={loading} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-50">{outlineSections.length ? 'Regenerate outline' : 'Generate outline'}</button><button onClick={() => setOutlineSections(previous => [...previous, 'New section'])} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold dark:border-zinc-700">Add section</button></div>
+                </div>
+                {outlineSections.length > 0 && <div className="mt-3 space-y-2">{outlineSections.map((section, index) => (
+                  <div key={`${index}-${section}`} className="flex items-center gap-2">
+                    <input aria-label={`Outline section ${index + 1}`} value={section} onChange={event => setOutlineSections(previous => previous.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-xs dark:border-zinc-700" />
+                    <button aria-label={`Move section ${index + 1} up`} disabled={index === 0} onClick={() => setOutlineSections(previous => { const next = [...previous]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="rounded p-1 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5 rotate-180" /></button>
+                    <button aria-label={`Move section ${index + 1} down`} disabled={index === outlineSections.length - 1} onClick={() => setOutlineSections(previous => { const next = [...previous]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })} className="rounded p-1 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
+                    <button aria-label={`Delete section ${index + 1}`} onClick={() => setOutlineSections(previous => previous.filter((_, itemIndex) => itemIndex !== index))} className="rounded p-1 text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                ))}<button onClick={() => handleEditorChange(outlineSections.map(section => `## ${section}`).join('\n\n'))} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-bold text-white">Approve outline</button></div>}
+              </section>
+            )}
+
             {/* The Main Distraction Free Editor */}
             <div className="flex-1 flex flex-col relative min-h-[250px]">
-              {editorContent ? (
+              {editorContent || editorStarted ? (
                 <textarea
                   ref={editorRef}
                   value={editorContent}
@@ -1107,7 +1072,7 @@ Parameter matrix:
                   </div>
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => handleEditorChange('# Dynamic Title\nStart writing details here...')}
+                      onClick={() => { setEditorTitle('Untitled document'); setEditorStarted(true); }}
                       className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition"
                     >
                       Start Scratchpad
@@ -1115,7 +1080,6 @@ Parameter matrix:
                     <button 
                       onClick={() => {
                         setActiveTemplateId('blog-writer');
-                        setPromptInput('Write a detailed article about local-first computing.');
                         setMobileTab('sidebar');
                       }}
                       className="border border-slate-200 dark:border-zinc-800 text-[10px] font-bold py-1.5 px-3 rounded-lg text-slate-500"
@@ -1126,14 +1090,14 @@ Parameter matrix:
                 </div>
               )}
 
-              {/* Streaming Output overlay typing loader */}
-              {loading && streamingOutput && (
+              {/* Honest request state: the current provider does not expose true streaming. */}
+              {loading && (
                 <div className="absolute inset-0 bg-white/90 dark:bg-zinc-950/90 p-8 text-xs font-sans leading-relaxed whitespace-pre-wrap select-text text-slate-800 dark:text-zinc-200 overflow-y-auto border border-indigo-500/20 rounded-xl">
                   <div className="flex items-center gap-2 mb-4 text-indigo-500 font-bold font-mono">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>AI Generation Streaming...</span>
+                    <span>Generating your draft…</span>
                   </div>
-                  {streamingOutput}
+                  <p className="text-slate-500 dark:text-zinc-400">Your form and existing document remain available if you stop this request.</p>
                 </div>
               )}
             </div>
@@ -1223,11 +1187,19 @@ Parameter matrix:
               {/* Output Actions copy/export triggers */}
               {editorContent && (
                 <div className="flex items-center gap-1">
+                  <button onClick={handleSaveDocument} disabled={saveStatus === 'saving'} className="inline-flex items-center gap-1 rounded p-1 hover:text-indigo-500 disabled:opacity-50" title="Save document">
+                    {saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    <span>{saveStatus === 'saved' ? 'Saved' : 'Save'}</span>
+                  </button>
                   <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(editorContent);
-                      setCopiedFormat('copy');
-                      setTimeout(() => setCopiedFormat(null), 1200);
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(editorContent);
+                        setCopiedFormat('copy');
+                        setTimeout(() => setCopiedFormat(null), 1200);
+                      } catch {
+                        setGenerationError('Copy failed. Select the document text and copy it manually.');
+                      }
                     }}
                     className="hover:text-indigo-500 p-1 rounded"
                     title="Copy All"
@@ -1274,6 +1246,35 @@ Parameter matrix:
               {activeTemplate.desc}
             </div>
 
+            <fieldset className="space-y-3" aria-describedby={generationError ? 'writer-generation-error' : undefined}>
+              <legend className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Template details</legend>
+              {(activeTemplate.inputFields || []).map(field => {
+                const value = templateValues[activeTemplateId]?.[field.id] || '';
+                const update = (next: string) => {
+                  setTemplateValues(previous => ({ ...previous, [activeTemplateId]: { ...(previous[activeTemplateId] || {}), [field.id]: next } }));
+                  setFieldErrors(previous => { const nextErrors = { ...previous }; delete nextErrors[field.id]; return nextErrors; });
+                };
+                return (
+                  <div key={field.id} className="space-y-1">
+                    <label htmlFor={`writer-${field.id}`} className="text-[10px] font-bold text-slate-600 dark:text-zinc-300">{field.label}{field.required ? ' *' : ''}</label>
+                    {field.type === 'textarea' ? (
+                      <textarea id={`writer-${field.id}`} rows={field.id === 'topic' ? 4 : 3} value={value} maxLength={field.maxLength} placeholder={field.placeholder} onChange={event => update(event.target.value)} aria-invalid={Boolean(fieldErrors[field.id])} aria-describedby={fieldErrors[field.id] ? `writer-${field.id}-error` : undefined} className="w-full resize-y rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-zinc-800 dark:bg-zinc-950" />
+                    ) : field.type === 'select' ? (
+                      <select id={`writer-${field.id}`} value={value} onChange={event => update(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"><option value="">Select an option</option>{field.options?.map(option => <option key={option} value={option}>{option}</option>)}</select>
+                    ) : (
+                      <input id={`writer-${field.id}`} type={field.type === 'url' ? 'url' : 'text'} value={value} maxLength={field.maxLength} placeholder={field.placeholder} onChange={event => update(event.target.value)} aria-invalid={Boolean(fieldErrors[field.id])} aria-describedby={fieldErrors[field.id] ? `writer-${field.id}-error` : undefined} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-zinc-800 dark:bg-zinc-950" />
+                    )}
+                    {field.description && <p className="text-[9px] text-slate-400">{field.description}</p>}
+                    {fieldErrors[field.id] && <p id={`writer-${field.id}-error`} role="alert" className="text-[10px] font-semibold text-red-600">{fieldErrors[field.id]}</p>}
+                  </div>
+                );
+              })}
+            </fieldset>
+
+            {(activeTemplate.category?.includes('Academic') || activeTemplate.id === 'citation-builder') && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">Academic integrity: provide source details for factual claims. GXA preserves supplied citations and uses placeholders instead of inventing references.</p>
+            )}
+
             {/* Purpose */}
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Purpose Direction</label>
@@ -1284,8 +1285,10 @@ Parameter matrix:
               >
                 <option value="inform">Informative (Neutral explanation)</option>
                 <option value="persuade">Persuasive (Formulate arguments)</option>
-                <option value="describe">Descriptive (Sensory & Atmosphere)</option>
-                <option value="instruct">Instructional (Steps & Guidelines)</option>
+                <option value="educate">Educate</option>
+                <option value="explain">Explain</option>
+                <option value="sell">Sell</option>
+                <option value="entertain">Entertain</option>
               </select>
             </div>
 
@@ -1300,8 +1303,12 @@ Parameter matrix:
                 <option value="professional">Professional (Corporate/Firm)</option>
                 <option value="casual">Casual (Friendly/Playful)</option>
                 <option value="empathetic">Empathetic (Compassionate)</option>
-                <option value="humorous">Humorous (Witty/Engaging)</option>
-                <option value="authoritative">Authoritative (Expert outline)</option>
+                <option value="friendly">Friendly</option>
+                <option value="formal">Formal</option>
+                <option value="confident">Confident</option>
+                <option value="informative">Informative</option>
+                <option value="creative">Creative</option>
+                <option value="direct">Direct</option>
               </select>
             </div>
 
@@ -1332,8 +1339,9 @@ Parameter matrix:
                 <option value="Spanish">Spanish (Español)</option>
                 <option value="French">French (Français)</option>
                 <option value="German">German (Deutsch)</option>
-                <option value="Japanese">Japanese (日本語)</option>
                 <option value="Hindi">Hindi (हिंदी)</option>
+                <option value="Hinglish">Hinglish</option>
+                <option value="Italian">Italian</option>
               </select>
             </div>
 
@@ -1606,7 +1614,7 @@ Parameter matrix:
       {/* ==========================================
           PORTAL DIALOG: SYSTEM ADMIN LIMITS MODAL
           ========================================== */}
-      {showAdminModal && (
+      {showAdminModal && currentUser?.role === 'SuperAdmin' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
             <button 

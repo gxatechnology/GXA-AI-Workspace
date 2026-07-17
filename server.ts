@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { buildParaphrasePrompt, countWords, FREE_PARAPHRASE_MODES, missingFrozenTerms, validateParaphraseRequest } from './server/paraphrase.js';
 import { buildGrammarPrompt, calculateWritingScores, countGrammarWords, CORE_GRAMMAR_CATEGORIES, normalizeGrammarIssues, validateGrammarRequest } from './server/grammar.js';
+import { buildWriterPrompt, countWriterWords, normalizeWriterOutput, normalizeWriterPlan, validateWriterRequest, WriterValidationError } from './server/writer.js';
 
 dotenv.config();
 
@@ -27,6 +28,9 @@ function readDb() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    writer_generations_limit: 5,
+    writer_input_word_limit: 1500,
+    writer_output_word_limit: 1200,
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
@@ -75,10 +79,16 @@ function readDb() {
     db = { users: {}, projects: {}, documents: {}, chats: {}, config: defaultConfig, usage: {} };
   }
 
-  // Backfill if needed
+  // Backfill new configuration keys without replacing admin-managed values.
   if (!db.config || Object.keys(db.config).length === 0) {
     db.config = defaultConfig;
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  } else {
+    const mergedConfig = { ...defaultConfig, ...db.config, feature_locks: { ...defaultConfig.feature_locks, ...(db.config.feature_locks || {}) } };
+    if (JSON.stringify(mergedConfig) !== JSON.stringify(db.config)) {
+      db.config = mergedConfig;
+      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    }
   }
   if (!db.usage) {
     db.usage = {};
@@ -198,7 +208,8 @@ app.get('/api/usage', (req, res) => {
       chats: 0,
       pdf_uploads: 0,
       ocr_pages: 0,
-      grammar_corrections: 0
+      grammar_corrections: 0,
+      writer_generations: 0
     };
     writeDb(db);
   }
@@ -222,7 +233,8 @@ app.post('/api/usage/increment', (req, res) => {
       chats: 0,
       pdf_uploads: 0,
       ocr_pages: 0,
-      grammar_corrections: 0
+      grammar_corrections: 0,
+      writer_generations: 0
     };
   }
   const addValue = count !== undefined ? Number(count) : 1;
@@ -344,6 +356,64 @@ app.post('/api/grammar/check', async (req, res) => {
   }
 });
 
+// Dedicated AI Writer endpoint. The shared registry identifies every real template,
+// while validation, entitlements, prompt construction, and usage accounting remain
+// server-side so frontend state cannot unlock templates or inject system instructions.
+app.post('/api/writer/generate', async (req, res) => {
+  const userId = getUserId(req) || 'guest';
+  const db = readDb();
+  const user = userId === 'guest' ? null : db.users[userId];
+  const userPlan = normalizeWriterPlan(user?.subscription);
+  let request;
+  try {
+    request = validateWriterRequest(req.body, userPlan);
+  } catch (error) {
+    if (error instanceof WriterValidationError) {
+      return res.status(error.status).json({ error: error.message, code: error.status === 403 ? 'PREMIUM_TEMPLATE' : 'INVALID_REQUEST', field: error.field });
+    }
+    return res.status(400).json({ error: 'The writing request is invalid.', code: 'INVALID_REQUEST' });
+  }
+
+  const isPremium = userPlan !== 'free';
+  const inputWords = countWriterWords(Object.values(request.fields).join(' ') + ' ' + request.customInstructions + ' ' + request.existingContent + ' ' + request.selectedText);
+  const inputLimit = Number(db.config.writer_input_word_limit || 1500);
+  if (!isPremium && inputWords > inputLimit) {
+    return res.status(413).json({ error: `This request has ${inputWords} words; the current plan limit is ${inputLimit}. Your work is unchanged.`, code: 'WORD_LIMIT', words: inputWords, limit: inputLimit });
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const usage = db.usage[userId]?.[today] || { writer_generations: 0 };
+  const dailyLimit = Number(db.config.writer_generations_limit || 5);
+  if (!isPremium && Number(usage.writer_generations || 0) >= dailyLimit) {
+    return res.status(429).json({ error: `The daily limit of ${dailyLimit} writing generations has been reached. Your draft is preserved.`, code: 'REQUEST_LIMIT', limit: dailyLimit });
+  }
+
+  try {
+    const built = buildWriterPrompt(request);
+    const response = await generateWithRetryAndFallback(built.prompt, { systemInstruction: built.systemInstruction });
+    const text = normalizeWriterOutput(response.text);
+    if (!db.usage[userId]) db.usage[userId] = {};
+    if (!db.usage[userId][today]) db.usage[userId][today] = { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0 };
+    db.usage[userId][today].writer_generations = Number(db.usage[userId][today].writer_generations || 0) + 1;
+    writeDb(db);
+    res.json({
+      text,
+      templateId: request.templateId,
+      mode: request.mode,
+      words: countWriterWords(text),
+      requestId: typeof req.body?.requestId === 'string' ? req.body.requestId.slice(0, 100) : '',
+      usage: { writer_generations: db.usage[userId][today].writer_generations },
+    });
+  } catch (error: any) {
+    console.error('Writer provider error:', error?.message || error);
+    const status = error instanceof WriterValidationError ? error.status : error?.status === 429 ? 429 : error?.status === 503 ? 503 : 502;
+    res.status(status).json({
+      error: status === 429 ? 'The AI provider rate limit was reached. Try again shortly.' : 'The writing service is temporarily unavailable. Your work is unchanged.',
+      code: status === 429 ? 'PROVIDER_RATE_LIMIT' : 'PROVIDER_UNAVAILABLE',
+    });
+  }
+});
+
 // Projects API Endpoints
 app.get('/api/projects', (req, res) => {
   const userId = getUserId(req);
@@ -399,9 +469,12 @@ app.get('/api/documents', (req, res) => {
 app.post('/api/documents', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const { name, pages, size, extractedSnippet, content, type, toolUsed, score } = req.body;
+  const { name, pages, size, extractedSnippet, content, type, toolUsed, score, projectId, metadata } = req.body;
   if (!name) return res.status(400).json({ error: 'Document name is required' });
   const db = readDb();
+  if (projectId && !(db.projects[userId] || []).some((project: any) => project.id === projectId)) {
+    return res.status(403).json({ error: 'The selected project is not available to this user.' });
+  }
   if (!db.documents[userId]) db.documents[userId] = [];
   const newDoc = {
     id: Math.random().toString(36).substring(2, 9),
@@ -414,6 +487,8 @@ app.post('/api/documents', (req, res) => {
     type: type || 'Document',
     toolUsed: toolUsed || 'Workspace',
     score: typeof score === 'number' ? score : undefined,
+    projectId: typeof projectId === 'string' ? projectId : undefined,
+    metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : undefined,
   };
   db.documents[userId].unshift(newDoc);
   writeDb(db);

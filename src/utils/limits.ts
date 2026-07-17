@@ -5,6 +5,9 @@ export interface SystemConfig {
   pdf_uploads_limit: number;
   ocr_pages_limit: number;
   grammar_corrections_limit: number;
+  writer_generations_limit: number;
+  writer_input_word_limit: number;
+  writer_output_word_limit: number;
   pricing_free: string;
   pricing_pro: string;
   pricing_pro_plus: string;
@@ -30,6 +33,7 @@ export interface UsageStats {
   pdf_uploads: number;
   ocr_pages: number;
   grammar_corrections: number;
+  writer_generations?: number;
 }
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
@@ -49,6 +53,9 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
+    writer_generations_limit: 5,
+    writer_input_word_limit: 1500,
+    writer_output_word_limit: 1200,
     pricing_free: "₹0",
     pricing_pro: "₹99",
     pricing_pro_plus: "₹149",
@@ -86,7 +93,8 @@ export async function fetchUsage(userEmail: string): Promise<UsageStats> {
     chats: 0,
     pdf_uploads: 0,
     ocr_pages: 0,
-    grammar_corrections: 0
+    grammar_corrections: 0,
+    writer_generations: 0
   };
 }
 
@@ -112,7 +120,8 @@ export async function incrementUsage(userEmail: string, type: keyof UsageStats, 
     chats: 0,
     pdf_uploads: 0,
     ocr_pages: 0,
-    grammar_corrections: 0
+    grammar_corrections: 0,
+    writer_generations: 0
   };
 }
 
