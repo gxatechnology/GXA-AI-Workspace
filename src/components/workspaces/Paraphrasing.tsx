@@ -39,31 +39,31 @@ import {
   Zap,
   Info
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
-import { fetchSystemConfig, fetchUsage, incrementUsage, isUserPremium, SystemConfig, UsageStats } from '../../utils/limits';
+import { fetchSystemConfig, fetchUsage, isUserPremium, SystemConfig, UsageStats } from '../../utils/limits';
+import { paraphraseContent } from '../../utils/paraphrase';
 
-// 12 Elite Modes defined by the specification
+// Existing modes plus the Phase 2 Humanize mode
 interface ParaphraseMode {
   id: string;
   name: string;
   desc: string;
   placeholderText: string;
-  systemInstruction: string;
 }
 
 const MODES_LIST: ParaphraseMode[] = [
-  { id: 'standard', name: 'Standard', desc: 'Rephrase sentences cleanly while preserving the exact semantic core.', placeholderText: '', systemInstruction: 'You are an elite paraphrasing engine. Rewrite the text to maintain the exact same meaning but using different syntax and robust vocabulary. Keep it clear.' },
-  { id: 'fluency', name: 'Fluency', desc: 'Erase complex sentence gaps and optimize structural English cadence.', placeholderText: '', systemInstruction: 'You are a professional proofreader. Paraphrase the text to maximize grammatical fluency, elegance, and natural English cadence.' },
-  { id: 'formal', name: 'Formal', desc: 'Elevate prose to sound objective, professional, and corporate-ready.', placeholderText: '', systemInstruction: 'You are an executive business writer. Rewrite the text to be extremely formal, polite, objective, and corporate-appropriate.' },
-  { id: 'academic', name: 'Academic', desc: 'Calibrate sentences for scientific papers and peer-reviewed articles.', placeholderText: '', systemInstruction: 'You are a peer-reviewed academic journal editor. Paraphrase the text using objective, formal, passive-voice expressions, and precise academic prose.' },
-  { id: 'professional', name: 'Professional', desc: 'Draft persuasive enterprise communications and sales pitches.', placeholderText: '', systemInstruction: 'You are an enterprise sales communication expert. Paraphrase the text to maximize persuasive weight, professional posture, and value alignment.' },
-  { id: 'business', name: 'Business', desc: 'Optimize content for standard commercial, product descriptions, and corporate messaging.', placeholderText: '', systemInstruction: 'You are an expert commercial copywriter. Paraphrase the text to be crisp, conversion-optimized, professional and highly clear.' },
-  { id: 'creative', name: 'Creative', desc: 'Inject rich verbs, sensory metaphors, and vivid stylistic vocabulary.', placeholderText: '', systemInstruction: 'You are a creative novelist. Paraphrase the text using rich sensory metaphors, varied sentence lengths, and engaging literary styling.' },
-  { id: 'simple', name: 'Simple', desc: 'Simplify complex jargon into plain, clear, digestible text.', placeholderText: '', systemInstruction: 'You are a plain-english instructor. Paraphrase the text using simple words, active verbs, and highly digestible sentence fragments.' },
-  { id: 'seo', name: 'SEO Optimized', desc: 'Incorporate search visibility structures and flow layouts for rankings.', placeholderText: '', systemInstruction: 'You are an SEO optimization analyst. Paraphrase the text to maximize organic keyword flow, density readability, and high semantic search optimization scores.' },
-  { id: 'expand', name: 'Expand', desc: 'Synthesize details and supporting context for more thorough essays.', placeholderText: '', systemInstruction: 'You are an educational technical writer. Expand the user’s text into a detailed, comprehensive paragraph that explains each facet deeply with supporting logic.' },
-  { id: 'shorten', name: 'Shorten', desc: 'Condense ideas down to their core scannable thesis statements.', placeholderText: '', systemInstruction: 'You are a micro-copy editor. Shorten the text to its absolute core, most essential, and action-oriented message.' },
-  { id: 'custom', name: 'Custom Mode', desc: 'Rewrite according to custom stylistic guidelines and parameters.', placeholderText: '', systemInstruction: 'You are an adaptive copywriter. Rewrite the text exactly to match custom stylistic instructions.' }
+  { id: 'standard', name: 'Standard', desc: 'Rephrase sentences cleanly while preserving the exact semantic core.', placeholderText: '' },
+  { id: 'fluency', name: 'Fluency', desc: 'Erase complex sentence gaps and optimize structural English cadence.', placeholderText: '' },
+  { id: 'formal', name: 'Formal', desc: 'Elevate prose to sound objective, professional, and corporate-ready.', placeholderText: '' },
+  { id: 'academic', name: 'Academic', desc: 'Calibrate sentences for scientific papers and peer-reviewed articles.', placeholderText: '' },
+  { id: 'professional', name: 'Professional', desc: 'Draft persuasive enterprise communications and sales pitches.', placeholderText: '' },
+  { id: 'business', name: 'Business', desc: 'Optimize content for standard commercial, product descriptions, and corporate messaging.', placeholderText: '' },
+  { id: 'creative', name: 'Creative', desc: 'Inject rich verbs, sensory metaphors, and vivid stylistic vocabulary.', placeholderText: '' },
+  { id: 'simple', name: 'Simple', desc: 'Simplify complex jargon into plain, clear, digestible text.', placeholderText: '' },
+  { id: 'seo', name: 'SEO Optimized', desc: 'Incorporate search visibility structures and flow layouts for rankings.', placeholderText: '' },
+  { id: 'expand', name: 'Expand', desc: 'Synthesize details and supporting context for more thorough essays.', placeholderText: '' },
+  { id: 'shorten', name: 'Shorten', desc: 'Condense ideas down to their core scannable thesis statements.', placeholderText: '' },
+  { id: 'humanize', name: 'Humanize', desc: 'Improve natural rhythm while preserving meaning and factual content.', placeholderText: '' },
+  { id: 'custom', name: 'Custom Mode', desc: 'Rewrite according to custom stylistic guidelines and parameters.', placeholderText: '' }
 ];
 
 interface ParaphrasingProps {
@@ -128,6 +128,7 @@ export default function Paraphrasing({
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [exportOpen, setExportOpen] = useState<boolean>(false);
   const [helpOpen, setHelpOpen] = useState<boolean>(false);
+  // Legacy admin overlay remains unreachable; plan configuration is managed only through protected /admin.
   const [adminOpen, setAdminOpen] = useState<boolean>(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState<boolean>(false);
   const [activeUpgradeModeName, setActiveUpgradeModeName] = useState<string>('');
@@ -152,6 +153,10 @@ export default function Paraphrasing({
   const [keepMeaning, setKeepMeaning] = useState<boolean>(true);
   const [useSimpleVocabulary, setUseSimpleVocabulary] = useState<boolean>(false);
   const [preserveFormatting, setPreserveFormatting] = useState<boolean>(true);
+  const [preserveCitations, setPreserveCitations] = useState<boolean>(true);
+  const [customInstructions, setCustomInstructions] = useState<string>('');
+  const [missingFrozenTerms, setMissingFrozenTerms] = useState<string[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Comparison/Diff View mode
   const [compareMode, setCompareMode] = useState<boolean>(false);
@@ -177,8 +182,9 @@ export default function Paraphrasing({
   useEffect(() => {
     // Load local storage history, stats and admin configurations
     try {
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
       const savedHistory = localStorage.getItem('gxa_paraphrase_history');
-      if (savedHistory) {
+      if (savedHistory && user && !user.guest && user.role !== 'Guest') {
         setHistoryList(JSON.parse(savedHistory));
       }
 
@@ -212,7 +218,7 @@ export default function Paraphrasing({
     } catch (e) {
       console.error('Error reading local metrics:', e);
     }
-  }, []);
+  }, [currentUser]);
 
   // Fetch standard limits and configurations from system core databases
   const loadLimitsData = async () => {
@@ -247,26 +253,35 @@ export default function Paraphrasing({
 
   // Autosave input draft to preserve states
   useEffect(() => {
-    if (localInputText.trim() !== '') {
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+    if (user && !user.guest && user.role !== 'Guest' && localInputText.trim() !== '') {
       localStorage.setItem('gxa_paraphrase_draft', localInputText);
-      // Run quick language detection heuristic
-      detectLanguageHeuristic(localInputText);
     }
-  }, [localInputText]);
+    if (localInputText.trim() !== '') detectLanguageHeuristic(localInputText);
+  }, [localInputText, currentUser]);
 
   // Read draft on mount if empty
   useEffect(() => {
-    if (!localInputText) {
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+    if (!localInputText && user && !user.guest && user.role !== 'Guest') {
       const savedDraft = localStorage.getItem('gxa_paraphrase_draft');
       if (savedDraft) {
         setLocalInputText(savedDraft);
       }
     }
-  }, []);
+  }, [currentUser]);
 
   // Keyboard shortcut listeners (Undo: Ctrl+Z, Redo: Ctrl+Y, Gen: Ctrl+Enter)
   useEffect(() => {
     const handleShortcuts = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setHistoryOpen(false);
+        setSettingsOpen(false);
+        setExportOpen(false);
+        setHelpOpen(false);
+        setUpgradeModalOpen(false);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         handleUndo();
@@ -382,12 +397,12 @@ export default function Paraphrasing({
 
   // Free Word Limits Calculation
   // Premium has unlimited words. If admin overrides limit, standardise it.
-  const wordLimit = isPremium ? adminPremiumLimit : adminMaxWords;
+  const wordLimit = isPremium ? adminPremiumLimit : (config?.paraphrase_word_limit ?? 125);
   const isCloseToLimit = !isPremium && wordsCount >= (wordLimit * 0.9) && wordsCount <= wordLimit;
   const isExceededLimit = !isPremium && wordsCount > wordLimit;
 
   // Daily Quota controls
-  const dailyLimit = isPremium ? Infinity : adminFreeLimit;
+  const dailyLimit = isPremium ? Infinity : (config?.paraphrases_limit ?? 10);
   const remainingUses = isPremium ? Infinity : Math.max(0, dailyLimit - (usage?.paraphrases || 0));
   const isDailyExceeded = !isPremium && remainingUses <= 0;
 
@@ -398,7 +413,7 @@ export default function Paraphrasing({
   };
 
   const handleModeSelection = (mode: ParaphraseMode) => {
-    if (isModePremium(mode.id) && !isPremium && !adminPremiumModesAllowed) {
+    if (isModePremium(mode.id) && !isPremium) {
       setActiveUpgradeModeName(mode.name);
       setUpgradeModalOpen(true);
     } else {
@@ -427,76 +442,32 @@ export default function Paraphrasing({
 
     setLoading(true);
     setErrorState(null);
-    setParaphrasedText('');
-
-    // Rotating messages queue for maximum UX responsiveness
-    const msgs = [
-      "Analyzing sentence architecture...",
-      "Calibrating vocabulary variations...",
-      "Polishing phrasing cadences...",
-      "Optimizing tone nuances...",
-      "Securing frozen keyword nodes...",
-      "Almost ready..."
-    ];
-    let msgIdx = 0;
-    setLoadingMsg(msgs[0]);
-    const timer = setInterval(() => {
-      msgIdx = (msgIdx + 1) % msgs.length;
-      setLoadingMsg(msgs[msgIdx]);
-    }, 1200);
+    setLoadingMsg('Rewriting while preserving meaning and protected terms...');
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       const activeModeObj = MODES_LIST.find(m => m.id === activeModeId) || MODES_LIST[0];
-      
-      const synonymDesc = synonymLevel === 1 
-        ? "Lowest substitution - keep phrasing extremely close to the original source."
-        : synonymLevel === 3 
-        ? "Highest substitution - rewrite maximally using fresh synonyms, vocabulary, and restructured templates."
-        : "Balanced substitution - replace words naturally while preserving readability.";
-
-      const freezeWordsDesc = freezeWordsInput.trim() !== ''
-        ? `\n\nCRITICAL: Do NOT modify, replace, or rephrase the following words or terms under any circumstances: ${freezeWordsInput}.`
-        : '';
-
       const languageTarget = outputLanguage === 'Auto Detect' ? detectedLanguage : outputLanguage;
-
-      const toneDesc = customTone !== 'Balanced' ? `Tone style to adopt: ${customTone}.` : '';
-      const audienceDesc = audience !== 'General' ? `Calibrate content for: ${audience} audience.` : '';
-      const lengthDesc = lengthPreference === 'Short' ? 'Please rewrite to be significantly shorter and concise.' : lengthPreference === 'Detailed' ? 'Please expand with slightly more explanatory clarity.' : 'Maintain original sentence length.';
-      const creativityDesc = `Creativity parameters: ${creativity}.`;
-      const readingLevelDesc = `Target reading grade comprehension level: ${readingLevel}.`;
-      const simplicityDesc = useSimpleVocabulary ? "Strictly use simple, accessible everyday vocabulary words." : "Employ professional, varied, and advanced vocabulary.";
-      const meaningDesc = keepMeaning ? "Do NOT change the underlying meaning under any circumstance." : "Minor meaning adaptations are permitted to maximize flow.";
-      const formattingDesc = preserveFormatting ? "Keep all existing paragraph alignments and spacing." : "Re-align paragraphs cleanly.";
-
-      const finalPrompt = `
-Original text to paraphrase:
-"${localInputText}"
-
-Apply the following elite rephrasing requirements carefully:
-1. Core Mode: ${activeModeObj.name}. Description: ${activeModeObj.desc}
-2. Core Mode Guidelines: ${activeModeObj.systemInstruction}
-3. Synonym settings: ${synonymDesc}
-4. Language of output: ${languageTarget} (Apply direct translation if original is different)
-5. Tone: ${toneDesc}
-6. Target Audience: ${audienceDesc}
-7. Length configuration: ${lengthDesc}
-8. Creativity depth: ${creativityDesc}
-9. Reading comprehension profile: ${readingLevelDesc}
-10. Simplicity toggle: ${simplicityDesc}
-11. Core meaning logic: ${meaningDesc}
-12. Structural spacing preserve: ${formattingDesc}
-${freezeWordsDesc}
-
-OUTPUT ONLY the final rephrased plain text content. Do not include introductory notes, markdown backticks, or other meta dialogue.
-`;
-
-      const response = await generateContent({
-        prompt: finalPrompt,
-        systemInstruction: activeModeObj.systemInstruction
-      });
-
-      clearInterval(timer);
+      const frozenTerms = [...new Set(freezeWordsInput.split(/[,\n]/).map(term => term.trim()).filter(Boolean))].slice(0, 50);
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      const result = await paraphraseContent({
+        text: localInputText,
+        mode: activeModeObj.id,
+        tone: customTone,
+        sourceLanguage: detectedLanguage,
+        outputLanguage: languageTarget,
+        outputLength: activeModeId === 'shorten' ? 'shorter' : activeModeId === 'expand' ? 'longer' : lengthPreference === 'Short' ? 'shorter' : lengthPreference === 'Detailed' ? 'longer' : 'similar',
+        synonymStrength: synonymLevel === 1 ? 'low' : synonymLevel === 3 ? 'high' : 'balanced',
+        frozenTerms,
+        preserveFormatting,
+        preserveCitations,
+        readingLevel,
+        customInstructions: activeModeId === 'custom' ? customInstructions : '',
+        requestId: crypto.randomUUID(),
+      }, user?.email || 'guest', controller.signal);
+      const response = result.text;
+      setMissingFrozenTerms(result.missingFrozenTerms || []);
 
       if (!response || response.trim() === '') {
         throw new Error('Empty response received');
@@ -513,18 +484,16 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
       // Track inside quiet local storage analytics
       trackAnalytics(wordsCount, activeModeId);
 
-      // Register usage count
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      const email = user ? user.email : 'guest';
-      const updatedUsage = await incrementUsage(email, 'paraphrases');
-      setUsage(updatedUsage);
+      setUsage(previous => ({ ...(previous || { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0 }), paraphrases: result.usage.paraphrases }));
 
       // Record to history list
       saveRewriteToHistory(localInputText, response, activeModeObj.name, languageTarget);
 
     } catch (err: any) {
-      clearInterval(timer);
-      console.error(err);
+      if (err?.name === 'AbortError') {
+        setErrorState({ type: 'cancelled', msg: paraphrasedText ? 'Generation stopped. The partial output was preserved.' : 'Generation was cancelled. Your input is unchanged.' });
+        return;
+      }
       const isNetworkErr = !navigator.onLine;
       if (isNetworkErr) {
         setErrorState({ type: 'network', msg: 'No active network connection detected. Check your internet connection.' });
@@ -536,9 +505,12 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
         setErrorState({ type: 'unknown', msg: 'Generation failed. Verify API configuration keys or try again.' });
       }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
     }
   };
+
+  const handleStopGeneration = () => abortControllerRef.current?.abort();
 
   const animateOutputText = (text: string) => {
     // Elegant character-by-character animation simulation
@@ -558,7 +530,8 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
       };
       const updated = [newItem, ...historyList].slice(0, 50); // Keep top 50 items
       setHistoryList(updated);
-      localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
     } catch (e) {
       console.error(e);
     }
@@ -760,12 +733,22 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
   };
 
   const parseTextFile = (file: File) => {
+    const extension = file.name.toLowerCase().split('.').pop();
+    if (!extension || !['txt', 'md', 'rtf'].includes(extension)) {
+      setErrorState({ type: 'file', msg: 'Unsupported file. Upload a TXT, Markdown, or RTF text file.' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorState({ type: 'file', msg: 'This file is larger than the supported 2 MB text-file limit.' });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
         handleInputTextChange(event.target.result as string);
       }
     };
+    reader.onerror = () => setErrorState({ type: 'file', msg: 'The file could not be read. Your existing text is unchanged.' });
     reader.readAsText(file);
   };
 
@@ -777,14 +760,16 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
       return item;
     });
     setHistoryList(updated);
-    localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+    if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
   };
 
   const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const updated = historyList.filter(item => item.id !== id);
     setHistoryList(updated);
-    localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+    if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
   };
 
   const restoreHistoryText = (item: HistoryItem) => {
@@ -858,15 +843,6 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
             <span>Help</span>
           </button>
 
-          {/* Quick Sandbox Admin Toggle */}
-          <button 
-            onClick={() => setAdminOpen(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/45 dark:bg-amber-950/20 text-xs font-black text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 transition"
-            title="SaaS workspace admin dashboard"
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Admin</span>
-          </button>
         </div>
       </div>
 
@@ -875,13 +851,15 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
         <div className="flex gap-1 overflow-x-auto pb-2 border-b border-slate-100 dark:border-zinc-800/40 scrollbar-none select-none">
           {MODES_LIST.map((mode) => {
             const isPremiumMode = isModePremium(mode.id);
-            const isLocked = isPremiumMode && !isPremium && !adminPremiumModesAllowed;
+            const isLocked = isPremiumMode && !isPremium;
             const isActive = activeModeId === mode.id;
 
             return (
               <button
                 key={mode.id}
                 onClick={() => handleModeSelection(mode)}
+                aria-pressed={isActive}
+                aria-label={`${mode.name} mode. ${mode.desc}${isLocked ? ' Requires a paid plan.' : ''}`}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 flex items-center gap-1.5 ${
                   isActive 
                     ? 'bg-teal-500 text-white shadow-xs' 
@@ -1134,6 +1112,13 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                     <h4 className="text-sm font-bold text-slate-700 dark:text-zinc-300">Synthesizing Paragraphs...</h4>
                     <p className="text-[10px] text-slate-400 font-mono">{loadingMsg}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleStopGeneration}
+                    className="min-h-11 rounded-xl border border-rose-200 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:hover:bg-rose-950/30"
+                  >
+                    Stop generation
+                  </button>
                 </div>
 
               ) : compareMode && paraphrasedText ? (
@@ -1168,9 +1153,12 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
 
               ) : paraphrasedText ? (
                 // OUTPUT PLAIN CANVAS
-                <div className="flex-1 text-sm leading-relaxed text-slate-800 dark:text-zinc-100 font-sans select-text whitespace-pre-wrap overflow-y-auto text-left h-[220px] pr-1">
-                  {paraphrasedText}
-                </div>
+                <textarea
+                  value={paraphrasedText}
+                  onChange={(event) => setParaphrasedText(event.target.value)}
+                  aria-label="Editable paraphrased output"
+                  className="flex-1 w-full min-h-[220px] resize-none bg-transparent text-sm leading-relaxed text-slate-800 dark:text-zinc-100 font-sans whitespace-pre-wrap overflow-y-auto text-left pr-1 focus:outline-none focus:ring-2 focus:ring-teal-500/30 rounded-lg"
+                />
 
               ) : (
                 // EMPTY STATE
@@ -1315,8 +1303,13 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
             aria-label="Frozen words array input"
           />
           <span className="text-[9px] text-slate-400 font-bold block mt-1.5 font-mono">
-            * Words entered above will never change during generation flow.
+            Protected terms are requested from the AI and checked after generation; review important content before use.
           </span>
+          {missingFrozenTerms.length > 0 && (
+            <p role="status" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] font-bold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+              Review protected terms not found in the output: {missingFrozenTerms.join(', ')}
+            </p>
+          )}
         </div>
 
         {/* Panel 3: Language selectors */}
@@ -1596,6 +1589,35 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                   />
                 </div>
 
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs font-bold">Preserve Citations and References</span>
+                    <span className="text-[10px] text-slate-400">Keep citation markers, quotations, and reference labels intact.</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={preserveCitations}
+                    onChange={(event) => setPreserveCitations(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-zinc-800 text-teal-500 focus:ring-teal-500/20"
+                    aria-label="Preserve citations toggle"
+                  />
+                </div>
+
+                {activeModeId === 'custom' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 dark:text-zinc-400" htmlFor="custom-paraphrase-instructions">Custom rewrite preferences</label>
+                    <textarea
+                      id="custom-paraphrase-instructions"
+                      value={customInstructions}
+                      maxLength={500}
+                      onChange={(event) => setCustomInstructions(event.target.value)}
+                      placeholder="Describe the style you want. Do not include private credentials."
+                      className="min-h-24 w-full rounded-xl border bg-slate-50 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/30 dark:bg-zinc-950"
+                    />
+                    <span className="block text-right text-[10px] text-slate-400">{customInstructions.length}/500</span>
+                  </div>
+                )}
+
               </div>
 
             </div>
@@ -1873,7 +1895,7 @@ OUTPUT ONLY the final rephrased plain text content. Do not include introductory 
                     <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Free Plan</span>
                     <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">₹0</h4>
                     <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1">✓ 125 word cap</li>
+                      <li className="flex items-center gap-1">✓ {config?.paraphrase_word_limit ?? 125} word cap</li>
                       <li className="flex items-center gap-1">✓ Standard Mode</li>
                     </ul>
                   </div>
