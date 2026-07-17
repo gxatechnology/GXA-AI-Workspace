@@ -46,7 +46,7 @@ export default function OCR({ currentUser, onOpenUpgradeModal }: OCRProps) {
       name: 'invoice_receipt_scan_982.jpg', 
       type: 'Structured Business Scan', 
       sampleImgDescription: 'A high-contrast black-and-white flatbed scan of an office invoice with clear bounding rows and line items.',
-      simulatedRawText: 'INVOICE #9821\nGXA Technologies Inc.\nDate: May 12, 2026\n\n1. Enterprise AI Subscription (Annual)\n2. Advanced Support SLA Integration\nTax: Applicable\nBalance Due: Refer to source invoice'
+      simulatedRawText: 'INVOICE #9821\nGXA Technologies Inc.\nDate: May 12, 2026\n\n1. Enterprise AI Subscription (Annual) - $14,200.00\n2. Advanced Support SLA Integration - $2,500.00\nTotal Due: $16,700.00\nTax (0% SLA exemption): $0.00\nBalance Due: $16,700.00'
     },
     { 
       id: 'handwriting', 

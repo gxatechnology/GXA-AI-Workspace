@@ -45,7 +45,7 @@ export default function App() {
     setCurrentUser(user);
     localStorage.setItem('gxa_user', JSON.stringify(user));
     navigate('/');
-    setActiveWorkspace(sessionStorage.getItem('gxa_pending_plan') ? 'pricing' : 'paraphrasing');
+    setActiveWorkspace('paraphrasing');
   };
 
   const handleLogout = () => {
@@ -133,11 +133,6 @@ export default function App() {
             currentUser={currentUser}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
-            onAuthRequired={(mode) => navigate(mode === 'register' ? '/register' : '/login')}
-            onSubscriptionActivated={(user) => {
-              setCurrentUser(user);
-              localStorage.setItem('gxa_user', JSON.stringify(user));
-            }}
             triggerPremiumLock={triggerPremiumLock}
           />
         )}

@@ -34,7 +34,7 @@ export default function Automation() {
   // Tool 1: Workflow Builder States
   const [nodes, setNodes] = useState<WorkflowNode[]>([
     { id: '1', type: 'trigger', title: 'Webhook Received', desc: 'gxa.ai/v1/webhook/order_placed' },
-    { id: '2', type: 'condition', title: 'Order Amount Filter', desc: 'Check if payload.amount exceeds the threshold' },
+    { id: '2', type: 'condition', title: 'Order Amount Filter', desc: 'Check if payload.amount > $150' },
     { id: '3', type: 'action', title: 'Send Slack Notification', desc: 'Relay order summary to #ops-alerts channel' },
     { id: '4', type: 'action', title: 'Provision API Key', desc: 'Create temporary client token' }
   ]);
@@ -111,7 +111,7 @@ export default function Automation() {
     }, 400);
 
     setTimeout(() => {
-      currentLog.push('[16:09:05] [CONDITION] [Order Amount Filter] Evaluated amount against configured threshold. MATCHED (TRUE)');
+      currentLog.push('[16:09:05] [CONDITION] [Order Amount Filter] Evaluated amount: $240. Value is > $150. MATCHED (TRUE)');
       setSimulationLogs([...currentLog]);
     }, 800);
 

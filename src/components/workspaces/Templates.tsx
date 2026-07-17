@@ -38,7 +38,7 @@ export default function Templates() {
         { key: 'client', label: 'Client Organization', placeholder: 'e.g. Google Cloud Operations' },
         { key: 'problem', label: 'Business Problem', placeholder: 'e.g. API credential leaks and slow devops pipelines' },
         { key: 'solution', label: 'Proposed Solution', placeholder: 'e.g. Deploy GXA AI Workspace local-first servers' },
-        { key: 'budget', label: 'Budget Outline', placeholder: 'e.g. annual subscription plus setup support' }
+        { key: 'budget', label: 'Budget Outline', placeholder: 'e.g. $14,200.00 annual subscription plus setup support' }
       ],
       systemInstruction: 'You are an elite enterprise B2B sales strategist. Draft a formal business proposal matching the client details. Structure with headings: Executive Summary, Problem Definition, Proposed Solution, and Financial Model.'
     },

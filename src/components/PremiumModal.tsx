@@ -29,8 +29,9 @@ export default function PremiumModal({
 
   if (!isOpen) return null;
 
+  const proPrice = config?.pricing_pro_monthly || '₹999';
+  const yearlyPrice = config?.pricing_pro_yearly || '₹599';
   const currency = config?.pricing_currency || 'INR';
-  const formatPrice = (amount: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs text-left animate-fade-in select-none">
@@ -70,7 +71,7 @@ export default function PremiumModal({
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">Free Basic / Guest</span>
                 <div className="flex items-baseline">
                   <span className="text-2xl font-black text-slate-900 dark:text-white font-display">
-                    {formatPrice(config?.plans?.free?.monthlyPrice || 0)}
+                    {currency === 'INR' ? '₹' : '$'}0
                   </span>
                   <span className="text-xs font-bold text-slate-500">/ forever</span>
                 </div>
@@ -105,10 +106,11 @@ export default function PremiumModal({
                 <span className="text-[10px] font-extrabold text-teal-600 dark:text-teal-400 uppercase tracking-widest block font-mono">GXA PRO SUITE</span>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-black text-slate-900 dark:text-white font-display">
-                    {config?.plans?.pro ? formatPrice(config.plans.pro.monthlyPrice || 0) : 'Loading'}
+                    {proPrice}
                   </span>
                   <span className="text-xs font-bold text-slate-500">/ mo</span>
                 </div>
+                <p className="text-[9px] text-teal-600 font-bold">Or {yearlyPrice}/mo billed annually</p>
                 <div className="space-y-2 pt-2 border-t border-teal-500/20">
                   <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-zinc-300">
                     <Check className="h-3.5 w-3.5 text-teal-500 shrink-0" />
