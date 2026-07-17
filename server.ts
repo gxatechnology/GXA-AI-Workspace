@@ -7,6 +7,7 @@ import fs from 'fs';
 import { buildParaphrasePrompt, countWords, FREE_PARAPHRASE_MODES, missingFrozenTerms, validateParaphraseRequest } from './server/paraphrase.js';
 import { buildGrammarPrompt, calculateWritingScores, countGrammarWords, CORE_GRAMMAR_CATEGORIES, normalizeGrammarIssues, validateGrammarRequest } from './server/grammar.js';
 import { buildWriterPrompt, countWriterWords, normalizeWriterOutput, normalizeWriterPlan, validateWriterRequest, WriterValidationError } from './server/writer.js';
+import { buildChatPrompt, CHAT_SYSTEM_INSTRUCTION, ChatAttachment, ChatConversationRecord, ChatMessageRecord, ChatValidationError, makeConversation, titleFromMessage, validateChatAttachments, validateChatMessage } from './server/chat.js';
 
 dotenv.config();
 
@@ -25,6 +26,11 @@ function readDb() {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
     ai_chats_limit: 5,
+    chat_message_character_limit: 20000,
+    chat_attachment_limit: 3,
+    chat_attachment_size_mb: 10,
+    chat_history_enabled: true,
+    chat_models: [{ id: 'default', name: 'GXA AI', multimodal: true, plan: 'free' }],
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
@@ -507,36 +513,60 @@ app.delete('/api/documents/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Chat History API Endpoints
+// Owned conversation APIs. Guests intentionally keep temporary chats in their browser session.
+const ownedConversations = (db: any, userId: string): ChatConversationRecord[] => {
+  const records = db.chats[userId];
+  if (!Array.isArray(records) || records.some((item: any) => !item?.id || !Array.isArray(item.messages))) return [];
+  return records;
+};
+
 app.get('/api/chats', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!userId) return res.status(401).json({ error: 'Sign in to access conversation history.' });
   const db = readDb();
-  res.json({ chats: db.chats[userId] || [] });
+  const chats = ownedConversations(db, userId).filter(chat => !chat.archivedAt || req.query.archived === 'true');
+  const query = String(req.query.q || '').trim().toLowerCase();
+  res.json({ chats: (query ? chats.filter(chat => chat.title.toLowerCase().includes(query)) : chats).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) });
 });
 
 app.post('/api/chats', (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  const { role, content } = req.body;
-  if (!role || !content) return res.status(400).json({ error: 'Role and content are required' });
+  if (!userId) return res.status(401).json({ error: 'Sign in to save conversations.' });
   const db = readDb();
-  if (!db.chats[userId]) db.chats[userId] = [];
-  const newMsg = {
-    role,
-    content,
-    timestamp: new Date().toISOString()
-  };
-  db.chats[userId].push(newMsg);
+  const conversation = makeConversation(userId, typeof req.body.projectId === 'string' ? req.body.projectId : undefined);
+  db.chats[userId] = [conversation, ...ownedConversations(db, userId)];
   writeDb(db);
-  res.json({ success: true, message: newMsg });
+  res.status(201).json({ conversation });
 });
 
-app.delete('/api/chats', (req, res) => {
+app.patch('/api/chats/:id', (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const db = readDb();
-  db.chats[userId] = [];
+  const chats = ownedConversations(db, userId);
+  const chat = chats.find(item => item.id === req.params.id);
+  if (!chat) return res.status(404).json({ error: 'Conversation not found.' });
+  if (typeof req.body.title === 'string') {
+    const title = req.body.title.trim().slice(0, 80);
+    if (!title) return res.status(400).json({ error: 'Title cannot be empty.' });
+    chat.title = title;
+    chat.manuallyRenamed = true;
+  }
+  if (typeof req.body.pinned === 'boolean') chat.pinned = req.body.pinned;
+  if (typeof req.body.archived === 'boolean') chat.archivedAt = req.body.archived ? new Date().toISOString() : undefined;
+  if (typeof req.body.projectId === 'string' || req.body.projectId === null) chat.projectId = req.body.projectId || undefined;
+  chat.updatedAt = new Date().toISOString();
+  writeDb(db);
+  res.json({ conversation: chat });
+});
+
+app.delete('/api/chats/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const db = readDb();
+  const chats = ownedConversations(db, userId);
+  if (!chats.some(item => item.id === req.params.id)) return res.status(404).json({ error: 'Conversation not found.' });
+  db.chats[userId] = chats.filter(item => item.id !== req.params.id);
   writeDb(db);
   res.json({ success: true });
 });
@@ -631,6 +661,83 @@ app.post('/api/gemini/generate', async (req, res) => {
   } catch (error: any) {
     console.error('Gemini proxy error:', error);
     res.status(500).json({ error: error.message || 'Error generating content from Gemini API' });
+  }
+});
+
+app.post('/api/chat/stream', async (req, res) => {
+  const startedAt = Date.now();
+  const userId = getUserId(req);
+  const db = readDb();
+  const config = db.config || {};
+  const attachments = (req.body.attachments || []) as ChatAttachment[];
+  try {
+    const content = validateChatMessage(req.body.content, attachments, Number(config.chat_message_character_limit || 20_000));
+    validateChatAttachments(attachments, Number(config.chat_attachment_limit || 3), Number(config.chat_attachment_size_mb || 10) * 1024 * 1024);
+    const today = new Date().toISOString().slice(0, 10);
+    const usageId = userId || 'guest';
+    db.usage[usageId] ||= {};
+    db.usage[usageId][today] ||= { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0 };
+    const user = userId ? db.users[userId] : null;
+    const premium = user && ['pro', 'pro plus', 'pro_plus', 'team', 'enterprise'].includes(String(user.subscription || '').toLowerCase());
+    if (!premium && db.usage[usageId][today].chats >= Number(config.ai_chats_limit || 5)) {
+      return res.status(429).json({ error: 'Daily chat limit reached. Your draft and conversation are still available.', code: 'PLAN_LIMIT' });
+    }
+
+    let conversation: ChatConversationRecord | undefined;
+    let priorMessages: ChatMessageRecord[] = Array.isArray(req.body.messages) ? req.body.messages.slice(-20) : [];
+    if (userId && req.body.conversationId) {
+      conversation = ownedConversations(db, userId).find(item => item.id === req.body.conversationId);
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found.' });
+      priorMessages = conversation.messages;
+    }
+    if (userId && !conversation && req.body.persist !== false) {
+      conversation = makeConversation(userId, typeof req.body.projectId === 'string' ? req.body.projectId : undefined);
+      db.chats[userId] = [conversation, ...ownedConversations(db, userId)];
+    }
+
+    const userMessage: ChatMessageRecord = { id: crypto.randomUUID(), role: 'user', content, status: 'complete', createdAt: new Date().toISOString(), attachments };
+    if (conversation) {
+      conversation.messages.push(userMessage);
+      if (!conversation.manuallyRenamed && conversation.messages.length === 1) conversation.title = titleFromMessage(content);
+      conversation.updatedAt = userMessage.createdAt;
+      writeDb(db);
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    const send = (value: object) => res.write(`${JSON.stringify(value)}\n`);
+    send({ type: 'meta', conversationId: conversation?.id, userMessageId: userMessage.id, title: conversation?.title });
+
+    const ai = getGeminiClient();
+    const stream = await ai.models.generateContentStream({
+      model: 'gemini-3.5-flash',
+      contents: buildChatPrompt(priorMessages, content, attachments),
+      config: { systemInstruction: CHAT_SYSTEM_INSTRUCTION }
+    });
+    let output = '';
+    for await (const chunk of stream) {
+      if (res.destroyed) return;
+      const text = chunk.text || '';
+      if (text) { output += text; send({ type: 'delta', text }); }
+    }
+    const assistantMessage: ChatMessageRecord = { id: crypto.randomUUID(), role: 'assistant', content: output, status: 'complete', createdAt: new Date().toISOString(), parentMessageId: userMessage.id };
+    if (conversation) {
+      conversation.messages.push(assistantMessage);
+      conversation.updatedAt = assistantMessage.createdAt;
+    }
+    db.usage[usageId][today].chats += 1;
+    writeDb(db);
+    send({ type: 'done', message: assistantMessage, usage: db.usage[usageId][today], latencyMs: Date.now() - startedAt });
+    res.end();
+  } catch (error: any) {
+    const status = error instanceof ChatValidationError ? error.status : /429|rate limit/i.test(error?.message || '') ? 429 : 502;
+    const message = error instanceof ChatValidationError ? error.message : status === 429 ? 'The AI service is busy. Please retry shortly.' : 'The AI service could not complete this response. Your message is preserved.';
+    if (!res.headersSent) return res.status(status).json({ error: message, code: error?.code || 'PROVIDER_ERROR' });
+    res.write(`${JSON.stringify({ type: 'error', error: message, code: error?.code || 'PROVIDER_ERROR' })}\n`);
+    res.end();
   }
 });
 
