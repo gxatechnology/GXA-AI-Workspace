@@ -47,6 +47,14 @@
     ],
     "pdf_uploads_limit": 3,
     "ocr_pages_limit": 2,
+    "document_upload_size_mb": 10,
+    "document_page_limit": 100,
+    "document_file_count_limit": 5,
+    "document_supported_types": [
+      "application/pdf",
+      "text/plain",
+      "text/markdown"
+    ],
     "grammar_corrections_limit": 5,
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
