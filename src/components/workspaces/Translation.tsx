@@ -16,7 +16,7 @@ import {
 import { generateContent } from '../../utils/gemini';
 
 export default function Translation() {
-  const [inputText, setInputText] = useState<string>('');
+  const [inputText, setInputText] = useState<string>('Hello! Welcome to the GXA Enterprise AI platform. Let us build high-performance web systems.');
   const [translatedText, setTranslatedText] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string>('');

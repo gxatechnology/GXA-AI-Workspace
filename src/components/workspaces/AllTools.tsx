@@ -97,6 +97,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
     // Enterprise Ops
     { id: 'collaboration', name: 'Team Collaboration', desc: 'Share documents, notes, and templates with team members.', category: 'Enterprise', isPro: true, workspaceId: 'collaboration', icon: Users },
     { id: 'billing', name: 'Billing & Token Usage', desc: 'Manage your enterprise seats, invoices, and API limits.', category: 'Enterprise', isPro: false, workspaceId: 'billing', icon: CreditCard },
+    { id: 'admin', name: 'SuperAdmin Dashboard', desc: 'Audit system parameters, workspace logs, and platform stats.', category: 'Enterprise', isPro: true, workspaceId: 'administration', icon: Shield }
   ];
 
   const filteredTools = tools.filter(tool => {

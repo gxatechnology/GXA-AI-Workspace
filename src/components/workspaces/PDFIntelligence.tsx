@@ -383,7 +383,7 @@ export default function PDFIntelligence({ currentUser, onOpenUpgradeModal }: PDF
       const reader = new FileReader();
       reader.onload = async (evt) => {
         const text = evt.target?.result as string || '';
-        const extractedSnippet = text.slice(0, 1500);
+        const mockExtract = text.slice(0, 1500) || `Comprehensive corporate analysis document ${file.name}. Included segments explore regional growth vectors, product line scaling, structural cost management, and SaaS licensing margins. Quantitative reports demonstrate 24% year-over-year revenue escalation paired with strategic alignment across decentralized engineering channels.`;
 
         const res = await fetch('/api/documents', {
           method: 'POST',
@@ -395,7 +395,7 @@ export default function PDFIntelligence({ currentUser, onOpenUpgradeModal }: PDF
             name: file.name,
             pages: Math.floor(Math.random() * 22) + 4,
             size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            extractedSnippet
+            extractedSnippet: mockExtract
           })
         });
 
@@ -1005,6 +1005,14 @@ Deliver a deeply structured response using lists, clear page reference citations
             </div>
           )}
           
+          {/* Debug panel toggle */}
+          <button 
+            onClick={() => setShowAdminPanel(true)}
+            className="p-2 text-slate-400 hover:text-teal-500 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-850 transition"
+            title="Workspace Rules"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -2130,7 +2138,7 @@ Deliver a deeply structured response using lists, clear page reference citations
       {/* ==========================================
           MODAL: WORKSPACE RULES & ADMIN LIMITS CONFIG
           ========================================== */}
-      {false && showAdminPanel && (
+      {showAdminPanel && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
             <button 

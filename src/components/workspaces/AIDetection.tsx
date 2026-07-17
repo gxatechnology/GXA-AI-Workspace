@@ -18,7 +18,9 @@ import {
 import { generateContent } from '../../utils/gemini';
 
 export default function AIDetection() {
-  const [inputText, setInputText] = useState<string>('');
+  const [inputText, setInputText] = useState<string>(
+    'In today’s fast-paced digital landscape, artificial intelligence has emerged as a critical driver of innovation. By leveraging advanced deep learning architectures and high-dimensional neural network arrays, organizations can optimize operational workflows and unlock unprecedented scaling efficiencies.'
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [humanizing, setHumanizing] = useState<boolean>(false);
   const [aiScore, setAiScore] = useState<number | null>(null);
