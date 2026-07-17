@@ -1,335 +1,73 @@
-import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
-import WorkspaceContent from './components/WorkspaceContent';
-import PropertiesPanel from './components/PropertiesPanel';
+import React, { useEffect, useMemo, useState } from 'react';
+import { LogOut, Menu, Moon, Search, Sun, UserCircle, X, Zap } from 'lucide-react';
 import LandingPage from './components/LandingPage';
-import AdaptiveRibbon from './components/AdaptiveRibbon';
+import Sidebar from './components/Sidebar';
+import ToolExplorer from './components/ToolExplorer';
 import UpgradeModal from './components/UpgradeModal';
+import WorkspaceContent from './components/WorkspaceContent';
+import { getTool, isAuthenticatedRoute, toolRegistry } from './toolRegistry';
 import { WorkspaceId } from './types';
-import { Sparkles, ArrowUpRight, Zap, Bell, CheckCircle, LogOut, Settings as SettingsIcon, Menu, X, PanelLeftClose, PanelLeft } from 'lucide-react';
+
+const guestUser = { id: 'guest', subscription: 'free', guest: true };
+const workspaceIds = new Set<WorkspaceId>(['home', 'dashboard', ...toolRegistry.map(tool => tool.route)] as WorkspaceId[]);
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<any>({ id: 'guest', name: 'Guest User', email: 'guest@gxa-workspace.local', subscription: 'free', guest: true });
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('paraphrasing');
+  const [currentUser, setCurrentUser] = useState<any>(guestUser);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const [upgradeRequiredPlan, setUpgradeRequiredPlan] = useState<'PRO' | 'PRO PLUS'>('PRO');
-  const [upgradeFeatureName, setUpgradeFeatureName] = useState('this Premium feature');
   const [sharedText, setSharedText] = useState('');
-  const [initialLandingAuth, setInitialLandingAuth] = useState<'view' | 'login' | 'register'>('view');
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [pendingWorkspace, setPendingWorkspace] = useState<WorkspaceId | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradePlan, setUpgradePlan] = useState<'PRO' | 'PRO PLUS'>('PRO');
+  const [upgradeFeature, setUpgradeFeature] = useState('this premium feature');
 
-  const triggerPremiumLock = (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => {
-    setUpgradeRequiredPlan(requiredPlan);
-    setUpgradeFeatureName(featureName);
-    setIsUpgradeModalOpen(true);
-  };
-
-  // Check for persistent session on mount
   useEffect(() => {
     const savedUser = localStorage.getItem('gxa_user');
-    if (savedUser) {
-      try {
-        setCurrentUser(JSON.parse(savedUser));
-      } catch (e) {
-        localStorage.removeItem('gxa_user');
-      }
+    let restoredUser: any = null;
+    if (savedUser) try { restoredUser = JSON.parse(savedUser); setCurrentUser(restoredUser); } catch { localStorage.removeItem('gxa_user'); }
+    const hash = window.location.hash.replace('#/', '') as WorkspaceId;
+    if (workspaceIds.has(hash)) setActiveWorkspace(hash);
+    if (window.location.pathname === '/admin') {
+      setPendingWorkspace('administration');
+      if (restoredUser?.role === 'SuperAdmin') setActiveWorkspace('administration');
+      else setAuthMode('login');
     }
   }, []);
 
-  const handleToggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  const isAuthenticated = Boolean(currentUser && !currentUser.guest);
+  const isAdmin = isAuthenticated && currentUser.role === 'SuperAdmin';
+  const activeTool = useMemo(() => getTool(activeWorkspace), [activeWorkspace]);
+
+  const selectWorkspace = (route: WorkspaceId) => {
+    if (route === 'administration' && !isAdmin) { setPendingWorkspace(route); setAuthMode('login'); return; }
+    if (isAuthenticatedRoute(route) && !isAuthenticated) { setPendingWorkspace(route); setAuthMode('login'); return; }
+    setActiveWorkspace(route); setSidebarOpen(false); setToolsOpen(false);
+    if (route === 'administration') window.history.pushState({}, '', '/admin');
+    else { if (window.location.pathname !== '/') window.history.pushState({}, '', '/'); window.history.replaceState({}, '', `/#/${route}`); }
   };
 
-  const handleLoginSuccess = (user: any) => {
-    setCurrentUser(user);
-    if (!user.guest) {
-      localStorage.setItem('gxa_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('gxa_user'); // guest shouldn't persist across browser reloads
-    }
-    setActiveWorkspace('dashboard');
-  };
+  const beginAuth = (mode: 'login' | 'register', returnTo: WorkspaceId = activeWorkspace) => { setPendingWorkspace(returnTo); setAuthMode(mode); };
+  const loginSuccess = (user: any) => { setCurrentUser(user); localStorage.setItem('gxa_user', JSON.stringify(user)); const destination = pendingWorkspace && pendingWorkspace !== 'administration' || user.role === 'SuperAdmin' ? pendingWorkspace : 'home'; setAuthMode(null); setPendingWorkspace(null); selectAfterAuth(destination || 'home'); };
+  const selectAfterAuth = (route: WorkspaceId) => { setActiveWorkspace(route); window.history.replaceState({}, '', route === 'administration' ? '/admin' : `/#/${route}`); };
+  const logout = () => { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); setActiveWorkspace('home'); window.history.replaceState({}, '', '/'); };
+  const showUpgrade = (featureName = activeTool?.name || 'this premium feature', plan: 'PRO' | 'PRO PLUS' = 'PRO') => { setUpgradeFeature(featureName); setUpgradePlan(plan); setUpgradeOpen(true); };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('gxa_user');
-  };
+  if (authMode) return <LandingPage onLoginSuccess={loginSuccess} theme={theme} onToggleTheme={() => setTheme(value => value === 'light' ? 'dark' : 'light')} initialAuthMode={authMode} />;
 
-  // Human-readable titles mapping for header
-  const workspaceTitles: Record<WorkspaceId, { title: string; subtitle: string }> = {
-    'dashboard': { 
-      title: 'Home / Dashboard', 
-      subtitle: currentUser?.guest 
-        ? 'Welcome to your Guest Session! Explore workspaces under free daily limits.'
-        : `Welcome back, ${currentUser?.name || 'Partner'}! Choose a tool or upload a PDF to get started.` 
-    },
-    'projects': { title: 'My Projects', subtitle: 'Organize, draft, and manage your custom database files.' },
-    'paraphrasing': { title: 'Paraphraser', subtitle: 'Rephrase your text cleanly across multiple writing models.' },
-    'grammar': { title: 'Grammar Checker', subtitle: 'Identify punctuation, spelling, and grammar mistakes.' },
-    'ai-detection': { title: 'AI Detector', subtitle: 'Identify potential machine-generated text segments.' },
-    'ai-humanizer': { title: 'AI Humanizer', subtitle: 'Rewrite robotic text to sound conversational and organic.' },
-    'ai-chat': { title: 'AI Writing Assistant', subtitle: 'Collaborate with your GXA writing co-pilot.' },
-    'summarizer': { title: 'Summarizer', subtitle: 'Condense dense documents into bulleted reports.' },
-    'translation': { title: 'Translator', subtitle: 'Translate your paragraphs between 30+ languages.' },
-    'pdf-intelligence': { title: 'PDF Intelligence', subtitle: 'Have a conversation with your uploaded files.' },
-    'all-tools': { title: 'All Tools', subtitle: 'Discover and launch creative assistants.' },
-    'settings': { title: 'Settings', subtitle: 'Configure system defaults and API secrets.' },
-    'ai-writing': { title: 'AI Writer', subtitle: 'Generate papers, emails, and articles.' },
-    'ocr': { title: 'Neural OCR', subtitle: 'Extract editable text from images and scans.' },
-    'documents': { title: 'Cloud Documents', subtitle: 'Access your secure storage folders.' },
-    'prompts': { title: 'Prompts Studio', subtitle: 'Design custom prompt templates.' },
-    'templates': { title: 'Document Templates', subtitle: 'Explore pre-written structures.' },
-    'collaboration': { title: 'Team Space', subtitle: 'Collaborate with workspace team seats.' },
-    'billing': { title: 'Billing', subtitle: 'Manage subscription limits and Stripe invoices.' },
-    'administration': { title: 'SuperAdmin Panel', subtitle: 'Audit workspace logs and server metrics.' },
-    'pricing': { title: 'Plans & Pricing', subtitle: 'Upgrade your workspace, customize team seats, or apply partner coupons.' },
-    'images': { title: 'Neural Image Studio', subtitle: 'Generate, edit, and run OCR on images.' },
-    'history': { title: 'Activity History', subtitle: 'Browse history timeline of your chats, documents, and assets.' },
-    'favorites': { title: 'Favorites Hub', subtitle: 'Your starred documents, chats, projects, and templates.' },
-    'pinned': { title: 'Pinned Items', subtitle: 'Quickly access files you have pinned for this workspace session.' },
-    'shared': { title: 'Shared Space', subtitle: 'Documents, folders, and resources shared with your account.' },
-    'trash': { title: 'Trash Bin', subtitle: 'Deleted items remain here for 30 days. Recover or delete permanently.' },
-    'storage': { title: 'Storage & Health', subtitle: 'Manage active storage quotas, download exports, and check syncer logs.' },
-    'collections': { title: 'Smart Collections', subtitle: 'Segment your work into Marketing, College, Research, Invoices, Clients, etc.' }
-  };
-
-  const headerMeta = workspaceTitles[activeWorkspace] || { title: 'AI Suite', subtitle: 'GXA AI Workspace' };
-
-  // Render Landing Page if guest user is not logged in
-  if (!currentUser) {
-    return (
-      <LandingPage 
-        onLoginSuccess={(user) => {
-          handleLoginSuccess(user);
-          setInitialLandingAuth('view');
-        }}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
-        initialAuthMode={initialLandingAuth}
-      />
-    );
-  }
-
-  // Get user initials for profile avatar
-  const getInitials = (fullName: string) => {
-    if (!fullName) return 'U';
-    return fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  return (
-    <div className={`${theme === 'dark' ? 'dark bg-zinc-950 text-zinc-100' : 'bg-slate-50 text-slate-800'} flex h-screen overflow-hidden font-sans transition duration-200`}>
-      
-      {/* Mobile Drawer Navigation Overlay */}
-      {isMobileSidebarOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 lg:hidden flex">
-          <div className="relative h-full animate-slide-right">
-            <Sidebar 
-              activeWorkspace={activeWorkspace}
-              onSelectWorkspace={(id) => {
-                setActiveWorkspace(id);
-                setIsMobileSidebarOpen(false);
-              }}
-              theme={theme}
-              onToggleTheme={handleToggleTheme}
-              onOpenUpgradeModal={() => {
-                setActiveWorkspace('pricing');
-                setIsMobileSidebarOpen(false);
-              }}
-              isGuest={currentUser?.guest}
-            />
-            <button 
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="absolute top-4 -right-12 p-2 rounded-xl bg-zinc-950 text-white hover:text-rose-400 transition"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="flex-1" onClick={() => setIsMobileSidebarOpen(false)} />
-        </div>
-      )}
-
-      {/* Desktop & Tablet Collapsible Left Sidebar */}
-      <div className="hidden md:block shrink-0 h-screen transition-all duration-300">
-        <Sidebar 
-          activeWorkspace={activeWorkspace}
-          onSelectWorkspace={setActiveWorkspace}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onOpenUpgradeModal={() => setActiveWorkspace('pricing')}
-          collapsed={isSidebarCollapsed}
-          isGuest={currentUser?.guest}
-        />
-      </div>
-
-      {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        
-        {/* Top Header */}
-        <header className="h-16 shrink-0 border-b flex items-center justify-between px-8 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border-slate-200/50 dark:border-zinc-800/80 z-15 transition">
-          {/* Header left */}
-          <div className="flex items-center gap-3.5 text-left">
-            {/* Mobile Hamburger Menu Button */}
-            <button 
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-lg md:hidden transition shrink-0"
-              title="Open Navigation"
-            >
-              <Menu className="h-4.5 w-4.5" />
-            </button>
-
-            {/* Desktop / Tablet Sidebar Collapse Trigger */}
-            <button 
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="hidden md:block p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-lg transition shrink-0 animate-fade-in"
-              title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            >
-              {isSidebarCollapsed ? <PanelLeft className="h-4.5 w-4.5" /> : <PanelLeftClose className="h-4.5 w-4.5" />}
-            </button>
-
-            <div>
-              <h1 className="text-sm font-black font-display text-slate-900 dark:text-white leading-none">
-                {headerMeta.title}
-              </h1>
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold block mt-1">
-                {headerMeta.subtitle}
-              </span>
-            </div>
-          </div>
-
-          {/* Header right buttons */}
-          <div className="flex items-center gap-4">
-            {currentUser?.guest ? (
-              <>
-                <button 
-                  onClick={() => {
-                    handleLogout();
-                    setInitialLandingAuth('login');
-                  }}
-                  className="text-xs font-bold text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white transition px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 cursor-pointer"
-                >
-                  Login
-                </button>
-                <button 
-                  onClick={() => {
-                    handleLogout();
-                    setInitialLandingAuth('register');
-                  }}
-                  className="bg-teal-500 hover:bg-teal-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
-                >
-                  Register
-                </button>
-                <button 
-                  onClick={() => setActiveWorkspace('pricing')}
-                  className={`text-xs font-extrabold px-3 py-1.5 rounded-lg transition tracking-wide uppercase font-mono ${
-                    activeWorkspace === 'pricing' 
-                      ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20' 
-                      : 'text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white'
-                  }`}
-                >
-                  Pricing
-                </button>
-              </>
-            ) : (
-              <>
-                {/* Quick alert notifications */}
-                <button className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-white transition rounded-lg">
-                  <Bell className="h-4.5 w-4.5" />
-                </button>
-
-                {/* Premium Upgrade callout (Only visible if Free User) */}
-                {currentUser?.subscription === 'free' ? (
-                  <button 
-                    onClick={() => setActiveWorkspace('pricing')}
-                    className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs px-3.5 py-1.5 rounded-xl transition duration-150 shadow-xs cursor-pointer"
-                  >
-                    Upgrade <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 text-[10px] font-extrabold uppercase tracking-wide border border-teal-200/40">
-                    ★ {currentUser?.subscription} Active
-                  </span>
-                )}
-
-                {/* Workspace switcher shortcut */}
-                <button 
-                  onClick={() => setActiveWorkspace('settings')}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-800 dark:hover:text-white transition rounded-lg"
-                  title="Workspace Switcher & Settings"
-                >
-                  <SettingsIcon className="h-4.5 w-4.5" />
-                </button>
-
-                {/* Divider */}
-                <div className="h-5 w-px bg-slate-200 dark:bg-zinc-800" />
-
-                {/* Small Profile icon with sign-out option */}
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="h-8 w-8 rounded-full bg-teal-500/10 border border-teal-500/20 font-black text-teal-600 dark:text-teal-400 text-xs flex items-center justify-center cursor-default"
-                    title={`${currentUser?.name} (${currentUser?.email})`}
-                  >
-                    {getInitials(currentUser?.name)}
-                  </div>
-
-                  <button 
-                    onClick={handleLogout}
-                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 text-slate-400 hover:text-red-500 rounded-lg transition"
-                    title="Log Out Session"
-                  >
-                    <LogOut className="h-4.5 w-4.5" />
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </header>
-
-        {/* Adaptive Ribbon Navigation Bar (QuillBot style dynamic collapsing tools) */}
-        <AdaptiveRibbon 
-          activeWorkspace={activeWorkspace}
-          onSelectWorkspace={setActiveWorkspace}
-        />
-
-        {/* Core Workspace Hub Layout (Center Content + Right Properties Panel) */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* CENTER: Workspace Content */}
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-slate-100/55 dark:bg-zinc-950 h-full scrollbar-thin">
-            <WorkspaceContent 
-              activeWorkspace={activeWorkspace}
-              onSelectWorkspace={setActiveWorkspace}
-              onOpenUpgradeModal={() => setActiveWorkspace('pricing')}
-              sharedText={sharedText}
-              setSharedText={setSharedText}
-              currentUser={currentUser}
-              triggerPremiumLock={triggerPremiumLock}
-            />
-          </div>
-
-          {/* RIGHT: Properties Panel (Desktop only) */}
-          <PropertiesPanel 
-            activeWorkspace={activeWorkspace}
-            currentUser={currentUser}
-            onSelectWorkspace={setActiveWorkspace}
-            sharedText={sharedText}
-            setSharedText={setSharedText}
-            onOpenUpgradeModal={() => setActiveWorkspace('pricing')}
-            triggerPremiumLock={triggerPremiumLock}
-          />
-        </div>
-
-      </div>
-
-      {/* Pricing Upgrade Modal */}
-      <UpgradeModal 
-        isOpen={isUpgradeModalOpen}
-        onClose={() => setIsUpgradeModalOpen(false)}
-        requiredPlan={upgradeRequiredPlan}
-        featureName={upgradeFeatureName}
-        onGoToPricing={() => setActiveWorkspace('pricing')}
-      />
-
+  return <div className={`${theme === 'dark' ? 'dark bg-zinc-950 text-zinc-100' : 'bg-slate-50 text-slate-900'} flex h-screen overflow-hidden font-sans`}>
+    {sidebarOpen && <div className="fixed inset-0 z-50 flex bg-slate-950/55 md:hidden"><Sidebar activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} theme={theme} onToggleTheme={() => setTheme(value => value === 'light' ? 'dark' : 'light')} isAuthenticated={isAuthenticated} onOpenTools={() => setToolsOpen(true)} /><button onClick={() => setSidebarOpen(false)} aria-label="Close navigation" className="m-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-900"><X className="h-5 w-5" /></button></div>}
+    <div className="hidden h-screen md:block"><Sidebar activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} theme={theme} onToggleTheme={() => setTheme(value => value === 'light' ? 'dark' : 'light')} collapsed={sidebarCollapsed} isAuthenticated={isAuthenticated} onOpenTools={() => setToolsOpen(true)} onCollapse={() => setSidebarCollapsed(value => !value)} /></div>
+    <div className="flex min-w-0 flex-1 flex-col">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 sm:px-6"><div className="flex min-w-0 items-center gap-3"><button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 md:hidden dark:text-zinc-300 dark:hover:bg-zinc-900"><Menu className="h-5 w-5" /></button><button onClick={() => selectWorkspace('home')} className="flex items-center gap-2 md:hidden"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-[10px] font-black text-white">GX</span><strong className="hidden text-sm sm:block">GXA AI Workspace</strong></button><div className="hidden min-w-0 md:block"><strong className="block truncate text-sm">{activeWorkspace === 'home' ? 'Home Workspace' : activeTool?.name || 'GXA AI Workspace'}</strong><span className="block truncate text-[10px] text-slate-400">{activeWorkspace === 'home' ? 'Create, write and work smarter with AI' : activeTool?.description}</span></div></div>
+        {!isAuthenticated ? <nav aria-label="Account" className="flex items-center gap-1 sm:gap-2"><button onClick={() => selectWorkspace('pricing')} className="rounded-lg px-2 py-2 text-xs font-bold text-slate-600 hover:text-teal-600 sm:px-3 dark:text-zinc-300">Pricing</button><button onClick={() => beginAuth('login')} className="rounded-lg px-2 py-2 text-xs font-bold sm:px-3">Login</button><button onClick={() => beginAuth('register')} className="rounded-xl bg-teal-500 px-3 py-2 text-xs font-black text-white sm:px-4">Register</button></nav> : <div className="flex items-center gap-1 sm:gap-2"><button onClick={() => setToolsOpen(true)} aria-label="Search tools" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-900"><Search className="h-4 w-4" /></button><span className="hidden rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase text-slate-600 sm:block dark:bg-zinc-900 dark:text-zinc-300">{currentUser.subscription || 'Free'} plan</span><button onClick={() => currentUser.subscription === 'free' ? selectWorkspace('pricing') : selectWorkspace('billing')} className="hidden items-center gap-1.5 rounded-xl bg-teal-500 px-3 py-2 text-xs font-black text-white sm:flex"><Zap className="h-3.5 w-3.5" />{currentUser.subscription === 'free' ? 'Upgrade' : 'Manage Plan'}</button><button onClick={() => setTheme(value => value === 'light' ? 'dark' : 'light')} aria-label="Toggle theme" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-900">{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}</button><UserCircle className="h-7 w-7 text-teal-600" aria-label="Profile" /><button onClick={logout} aria-label="Log out" className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><LogOut className="h-4 w-4" /></button></div>}
+      </header>
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-3 dark:bg-zinc-950 sm:p-5 lg:p-7"><WorkspaceContent activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} onOpenUpgradeModal={() => showUpgrade()} onOpenTools={() => setToolsOpen(true)} sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} isAuthenticated={isAuthenticated} /></main>
     </div>
-  );
+    <ToolExplorer open={toolsOpen} onClose={() => setToolsOpen(false)} onSelect={selectWorkspace} isAuthenticated={isAuthenticated} />
+    <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} requiredPlan={upgradePlan} featureName={upgradeFeature} onGoToPricing={() => { setUpgradeOpen(false); selectWorkspace('pricing'); }} />
+  </div>;
 }

@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { generateContent } from '../../utils/gemini';
 
-export default function Summarizer() {
-  const [inputText, setInputText] = useState('');
+export default function Summarizer({ initialText = '' }: { initialText?: string }) {
+  const [inputText, setInputText] = useState(initialText);
   const [summary, setSummary] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);

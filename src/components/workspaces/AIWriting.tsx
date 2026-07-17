@@ -1719,7 +1719,7 @@ Parameter matrix:
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Pro Subscription Plan</span>
                 <div className="flex items-baseline gap-1 mt-2">
-                  <span className="text-3xl font-black text-slate-900 dark:text-white">₹999</span>
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">₹149</span>
                   <span className="text-xs text-slate-400 font-bold">/ month</span>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">Save 40% utilizing promo GXA40 at final checkout portal.</p>

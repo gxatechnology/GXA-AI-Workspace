@@ -82,9 +82,9 @@ export default function Administration() {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
-    pricing_pro_monthly: "₹999",
-    pricing_pro_yearly: "₹599",
-    pricing_enterprise: "₹3,500",
+    pricing_pro_monthly: "₹99",
+    pricing_pro_yearly: "₹99",
+    pricing_enterprise: "Custom Pricing",
     pricing_currency: "INR",
     feature_locks: {
       academic: true,

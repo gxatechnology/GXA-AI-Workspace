@@ -1,182 +1,75 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
+import { Loader2 } from 'lucide-react';
 import { WorkspaceId } from '../types';
-import Dashboard from './workspaces/Dashboard';
-import SettingsView from './workspaces/Settings';
+import UniversalHome from './workspaces/UniversalHome';
 
-// Import New High-Fidelity Enterprise Workspaces
-import AIWriting from './workspaces/AIWriting';
-import Grammar from './workspaces/Grammar';
-import Paraphrasing from './workspaces/Paraphrasing';
-import AIDetection from './workspaces/AIDetection';
-import Translation from './workspaces/Translation';
-import PDFIntelligence from './workspaces/PDFIntelligence';
-import OCR from './workspaces/OCR';
-import Documents from './workspaces/Documents';
-import PromptEngineering from './workspaces/PromptEngineering';
-import Templates from './workspaces/Templates';
-import Collaboration from './workspaces/Collaboration';
-import Billing from './workspaces/Billing';
-import Pricing from './workspaces/Pricing';
-import Administration from './workspaces/Administration';
+const Dashboard = lazy(() => import('./workspaces/Dashboard'));
+const SettingsView = lazy(() => import('./workspaces/Settings'));
+const AIWriting = lazy(() => import('./workspaces/AIWriting'));
+const Grammar = lazy(() => import('./workspaces/Grammar'));
+const Paraphrasing = lazy(() => import('./workspaces/Paraphrasing'));
+const AIDetection = lazy(() => import('./workspaces/AIDetection'));
+const AIHumanizer = lazy(() => import('./workspaces/AIHumanizer'));
+const AIChat = lazy(() => import('./workspaces/AIChat'));
+const Translation = lazy(() => import('./workspaces/Translation'));
+const Summarizer = lazy(() => import('./workspaces/Summarizer'));
+const PDFIntelligence = lazy(() => import('./workspaces/PDFIntelligence'));
+const OCR = lazy(() => import('./workspaces/OCR'));
+const Documents = lazy(() => import('./workspaces/Documents'));
+const PromptEngineering = lazy(() => import('./workspaces/PromptEngineering'));
+const Templates = lazy(() => import('./workspaces/Templates'));
+const Collaboration = lazy(() => import('./workspaces/Collaboration'));
+const Billing = lazy(() => import('./workspaces/Billing'));
+const Pricing = lazy(() => import('./workspaces/Pricing'));
+const Administration = lazy(() => import('./workspaces/Administration'));
+const AllTools = lazy(() => import('./workspaces/AllTools'));
+const Projects = lazy(() => import('./workspaces/Projects'));
+const TrashView = lazy(() => import('./workspaces/Trash'));
+const StorageView = lazy(() => import('./workspaces/Storage'));
+const FavoritesView = lazy(() => import('./workspaces/Favorites'));
+const ImagesView = lazy(() => import('./workspaces/Images'));
+const HistoryView = lazy(() => import('./workspaces/History'));
+const PinnedView = lazy(() => import('./workspaces/Pinned'));
+const SharedView = lazy(() => import('./workspaces/Shared'));
+const CollectionsView = lazy(() => import('./workspaces/Collections'));
 
-// Redesigned additional workspaces
-import AllTools from './workspaces/AllTools';
-import Projects from './workspaces/Projects';
-import AIHumanizer from './workspaces/AIHumanizer';
-import AIChat from './workspaces/AIChat';
-import Summarizer from './workspaces/Summarizer';
+interface Props { activeWorkspace: WorkspaceId; onSelectWorkspace: (id: WorkspaceId) => void; onOpenUpgradeModal: () => void; onOpenTools: () => void; sharedText: string; setSharedText: (text: string) => void; currentUser?: any; isAuthenticated: boolean }
 
-// Workspace Hub Systems
-import TrashView from './workspaces/Trash';
-import StorageView from './workspaces/Storage';
-import FavoritesView from './workspaces/Favorites';
-import ImagesView from './workspaces/Images';
-import HistoryView from './workspaces/History';
-import PinnedView from './workspaces/Pinned';
-import SharedView from './workspaces/Shared';
-import CollectionsView from './workspaces/Collections';
-
-interface WorkspaceContentProps {
-  activeWorkspace: WorkspaceId;
-  onSelectWorkspace: (id: WorkspaceId) => void;
-  onOpenUpgradeModal: () => void;
-  sharedText: string;
-  setSharedText: (text: string) => void;
-  currentUser?: any;
-}
-
-export default function WorkspaceContent({ 
-  activeWorkspace, 
-  onSelectWorkspace,
-  onOpenUpgradeModal,
-  sharedText,
-  setSharedText,
-  currentUser
-}: WorkspaceContentProps) {
-  // Simple tool navigation inside dashboard click handlers
-  const handleSelectTool = (workspaceId: WorkspaceId, toolId: string) => {
-    onSelectWorkspace(workspaceId);
-  };
-
+export default function WorkspaceContent(props: Props) {
+  const { activeWorkspace, onSelectWorkspace, onOpenUpgradeModal, onOpenTools, sharedText, setSharedText, currentUser, isAuthenticated } = props;
+  let content: React.ReactNode;
   switch (activeWorkspace) {
-    case 'dashboard':
-      return (
-        <Dashboard 
-          onSelectWorkspace={onSelectWorkspace} 
-          onSelectTool={handleSelectTool} 
-          sharedText={sharedText}
-          setSharedText={setSharedText}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-          currentUser={currentUser}
-        />
-      );
-    case 'settings':
-      return <SettingsView />;
-    
-    // Switch routing cases for all SaaS workspaces
-    case 'ai-writing':
-      return (
-        <AIWriting 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'grammar':
-      return (
-        <Grammar 
-          sharedText={sharedText} 
-          setSharedText={setSharedText} 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'paraphrasing':
-      return (
-        <Paraphrasing 
-          sharedText={sharedText} 
-          setSharedText={setSharedText} 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'ai-detection':
-      return <AIDetection />;
-    case 'translation':
-      return <Translation />;
-    case 'pdf-intelligence':
-      return (
-        <PDFIntelligence 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'ocr':
-      return (
-        <OCR 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'documents':
-      return <Documents />;
-    case 'prompts':
-      return <PromptEngineering />;
-    case 'templates':
-      return <Templates />;
-    case 'collaboration':
-      return <Collaboration />;
-    case 'billing':
-      return <Billing />;
-    case 'pricing':
-      return <Pricing />;
-    case 'administration':
-      return <Administration />;
-
-    // Redesigned routes
-    case 'all-tools':
-      return <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={onOpenUpgradeModal} />;
-    case 'projects':
-      return <Projects />;
-    case 'ai-humanizer':
-      return <AIHumanizer />;
-    case 'ai-chat':
-      return (
-        <AIChat 
-          currentUser={currentUser}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
-    case 'summarizer':
-      return <Summarizer />;
-
-    // Workspace Systems Routes
-    case 'trash':
-      return <TrashView />;
-    case 'storage':
-      return <StorageView />;
-    case 'favorites':
-      return <FavoritesView onSelectWorkspace={onSelectWorkspace} />;
-    case 'images':
-      return <ImagesView />;
-    case 'history':
-      return <HistoryView />;
-    case 'pinned':
-      return <PinnedView onSelectWorkspace={onSelectWorkspace} />;
-    case 'shared':
-      return <SharedView onSelectWorkspace={onSelectWorkspace} />;
-    case 'collections':
-      return <CollectionsView onSelectWorkspace={onSelectWorkspace} />;
-
-    default:
-      return (
-        <Dashboard 
-          onSelectWorkspace={onSelectWorkspace} 
-          onSelectTool={handleSelectTool} 
-          sharedText={sharedText}
-          setSharedText={setSharedText}
-          onOpenUpgradeModal={onOpenUpgradeModal}
-        />
-      );
+    case 'home': content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />; break;
+    case 'dashboard': content = <Dashboard onSelectWorkspace={onSelectWorkspace} onSelectTool={workspace => onSelectWorkspace(workspace)} sharedText={sharedText} setSharedText={setSharedText} onOpenUpgradeModal={onOpenUpgradeModal} currentUser={currentUser} />; break;
+    case 'settings': content = <SettingsView />; break;
+    case 'ai-writing': content = <AIWriting currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'grammar': content = <Grammar sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'paraphrasing': content = <Paraphrasing sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'ai-detection': content = <AIDetection initialText={sharedText} />; break;
+    case 'ai-humanizer': content = <AIHumanizer initialText={sharedText} />; break;
+    case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'translation': content = <Translation initialText={sharedText} />; break;
+    case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
+    case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'ocr': content = <OCR currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'documents': content = <Documents />; break;
+    case 'prompts': content = <PromptEngineering />; break;
+    case 'templates': content = <Templates />; break;
+    case 'collaboration': content = <Collaboration />; break;
+    case 'billing': content = <Billing />; break;
+    case 'pricing': content = <Pricing />; break;
+    case 'administration': content = <Administration />; break;
+    case 'all-tools': content = <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'projects': content = <Projects />; break;
+    case 'trash': content = <TrashView />; break;
+    case 'storage': content = <StorageView />; break;
+    case 'favorites': content = <FavoritesView onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'images': content = <ImagesView />; break;
+    case 'history': content = <HistoryView />; break;
+    case 'pinned': content = <PinnedView onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'shared': content = <SharedView onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'collections': content = <CollectionsView onSelectWorkspace={onSelectWorkspace} />; break;
+    default: content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />;
   }
+  return <Suspense fallback={<div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-teal-500" aria-label="Loading workspace" /></div>}>{content}</Suspense>;
 }
-

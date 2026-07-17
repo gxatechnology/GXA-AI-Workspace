@@ -29,8 +29,8 @@ export default function PremiumModal({
 
   if (!isOpen) return null;
 
-  const proPrice = config?.pricing_pro_monthly || '₹999';
-  const yearlyPrice = config?.pricing_pro_yearly || '₹599';
+  const proPrice = config?.pricing_pro_monthly || config?.pricing_pro || '₹99';
+  const yearlyPrice = config?.pricing_pro_yearly || config?.pricing_pro || '₹99';
   const currency = config?.pricing_currency || 'INR';
 
   return (

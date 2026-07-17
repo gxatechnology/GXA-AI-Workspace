@@ -17,8 +17,8 @@ import {
 } from 'lucide-react';
 import { generateContent } from '../../utils/gemini';
 
-export default function AIHumanizer() {
-  const [inputText, setInputText] = useState('');
+export default function AIHumanizer({ initialText = '' }: { initialText?: string }) {
+  const [inputText, setInputText] = useState(initialText);
   const [humanizedText, setHumanizedText] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);

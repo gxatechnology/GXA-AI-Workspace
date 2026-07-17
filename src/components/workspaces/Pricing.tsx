@@ -70,8 +70,8 @@ export default function Pricing() {
     async function loadConfig() {
       try {
         const config = await fetchSystemConfig();
-        const pm = parsePriceStr(config.pricing_pro_monthly, 999);
-        const py = parsePriceStr(config.pricing_pro_yearly, 599);
+        const pm = parsePriceStr(config.pricing_pro_monthly || config.pricing_pro, 99);
+        const py = parsePriceStr(config.pricing_pro_yearly || config.pricing_pro, 99);
         setProMonthly(pm);
         setProYearly(py);
         

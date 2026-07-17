@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Sparkles, 
   ShieldAlert, 
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { generateContent } from '../../utils/gemini';
 
-export default function AIDetection() {
+export default function AIDetection({ initialText = '' }: { initialText?: string }) {
   const [inputText, setInputText] = useState<string>(
     'In today’s fast-paced digital landscape, artificial intelligence has emerged as a critical driver of innovation. By leveraging advanced deep learning architectures and high-dimensional neural network arrays, organizations can optimize operational workflows and unlock unprecedented scaling efficiencies.'
   );
@@ -27,6 +27,8 @@ export default function AIDetection() {
   const [humanizedText, setHumanizedText] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'detector' | 'humanizer' | 'analysis' | 'improvement'>('detector');
+
+  useEffect(() => { setInputText(initialText); }, [initialText]);
 
   const handleDetect = async () => {
     if (!inputText.trim() || loading) return;

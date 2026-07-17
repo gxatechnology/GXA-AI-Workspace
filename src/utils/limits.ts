@@ -11,6 +11,8 @@ export interface SystemConfig {
   pricing_team: string;
   pricing_enterprise: string;
   pricing_currency: string;
+  pricing_pro_monthly?: string;
+  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
