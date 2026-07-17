@@ -22,6 +22,7 @@ import Administration from './workspaces/Administration';
 // Redesigned additional workspaces
 import AllTools from './workspaces/AllTools';
 import Projects from './workspaces/Projects';
+import AIHumanizer from './workspaces/AIHumanizer';
 import AIChat from './workspaces/AIChat';
 import Summarizer from './workspaces/Summarizer';
 
@@ -42,9 +43,6 @@ interface WorkspaceContentProps {
   sharedText: string;
   setSharedText: (text: string) => void;
   currentUser?: any;
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  triggerPremiumLock?: (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => void;
 }
 
 export default function WorkspaceContent({ 
@@ -53,9 +51,7 @@ export default function WorkspaceContent({
   onOpenUpgradeModal,
   sharedText,
   setSharedText,
-  currentUser,
-  isAuthenticated,
-  isAdmin
+  currentUser
 }: WorkspaceContentProps) {
   // Simple tool navigation inside dashboard click handlers
   const handleSelectTool = (workspaceId: WorkspaceId, toolId: string) => {
@@ -121,6 +117,8 @@ export default function WorkspaceContent({
           onOpenUpgradeModal={onOpenUpgradeModal}
         />
       );
+    case 'documents':
+      return <Documents />;
     case 'prompts':
       return <PromptEngineering />;
     case 'templates':
@@ -132,15 +130,15 @@ export default function WorkspaceContent({
     case 'pricing':
       return <Pricing />;
     case 'administration':
-      return isAdmin ? <Administration /> : null;
+      return <Administration />;
 
     // Redesigned routes
     case 'all-tools':
       return <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={onOpenUpgradeModal} />;
     case 'projects':
-      return isAuthenticated ? <Projects /> : null;
+      return <Projects />;
     case 'ai-humanizer':
-      return <AIDetection />;
+      return <AIHumanizer />;
     case 'ai-chat':
       return (
         <AIChat 
@@ -161,9 +159,7 @@ export default function WorkspaceContent({
     case 'images':
       return <ImagesView />;
     case 'history':
-      return isAuthenticated ? <HistoryView /> : null;
-    case 'documents':
-      return isAuthenticated ? <Documents /> : null;
+      return <HistoryView />;
     case 'pinned':
       return <PinnedView onSelectWorkspace={onSelectWorkspace} />;
     case 'shared':
