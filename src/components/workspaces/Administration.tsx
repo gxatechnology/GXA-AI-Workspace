@@ -48,16 +48,31 @@ interface SupportTicket {
   status: 'Open' | 'Resolved';
 }
 
-export default function Administration({ currentUser }: { currentUser?: any }) {
+export default function Administration() {
   const [activeTab, setActiveTab] = useState<'users' | 'flags' | 'limits' | 'logs' | 'tickets'>('users');
   
-  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([
+    { id: 'm-1', name: 'John Doe', email: 'john@gxa.io', role: 'SuperAdmin', status: 'Active' },
+    { id: 'm-2', name: 'Jane Smith', email: 'jane@gxa.io', role: 'Member', status: 'Active' },
+    { id: 'm-3', name: 'David Chen', email: 'david@gxa.io', role: 'Reviewer', status: 'Active' }
+  ]);
 
-  const [flags, setFlags] = useState<FeatureFlag[]>([]);
+  const [flags, setFlags] = useState<FeatureFlag[]>([
+    { key: 'gemini-pro', name: 'Paid Gemini 3.1 Pro Engine', desc: 'Allows access to deep reasoning and search grounded models.', enabled: true },
+    { key: 'pdf-ocr', name: 'Local PDF OCR Scan Grid', desc: 'Uses advanced spatial positioning models inside PDF viewports.', enabled: true },
+    { key: 'multi-lang', name: 'Bilingual Translation Exemption Layer', desc: 'Enables automatic source syntax detection on translate queries.', enabled: false }
+  ]);
 
-  const [logs] = useState<AuditLog[]>([]);
+  const [logs] = useState<AuditLog[]>([
+    { id: 'l-1', timestamp: '16:23:44', actor: 'John Doe', event: 'Modified feature flags config block', severity: 'WARN' },
+    { id: 'l-2', timestamp: '15:10:12', actor: 'Jane Smith', event: 'Authorized OAuth credentials pool', severity: 'INFO' },
+    { id: 'l-3', timestamp: '14:02:55', actor: 'System (Port 3000)', event: 'NGINX ingress reverse proxy remapped', severity: 'INFO' }
+  ]);
 
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([
+    { id: 't-1', client: 'Acme Corp', subject: 'Port 3000 container ingress routing mismatch', urgency: 'High', status: 'Open' },
+    { id: 't-2', client: 'HedgeFund Ltd', subject: 'Invoices missing SLA partner credit exemptions', urgency: 'Medium', status: 'Open' }
+  ]);
 
   // Dynamic SaaS Configuration Limits state
   const [config, setConfig] = useState<any>({
@@ -67,10 +82,8 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
     pdf_uploads_limit: 3,
     ocr_pages_limit: 2,
     grammar_corrections_limit: 5,
-    pricing_free: "₹0",
-    pricing_pro: "₹99",
-    pricing_pro_plus: "₹149",
-    pricing_team: "Contact Sales",
+    pricing_pro_monthly: "₹99",
+    pricing_pro_yearly: "₹99",
     pricing_enterprise: "Custom Pricing",
     pricing_currency: "INR",
     feature_locks: {
@@ -106,8 +119,7 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser?.email || currentUser?.id || ''}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(config)
       });
@@ -220,7 +232,7 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
             <span>ROOT_PRIVILEGE</span>
           </div>
           <p className="text-[9px] leading-relaxed text-zinc-500 font-mono">
-            Protected administrator session. Operational data loads from the configured backend.
+            Active session: John Doe (Primary Owner). Operations log natively mapped via secure Express ports.
           </p>
         </div>
       </div>
@@ -334,20 +346,20 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
                   <div className="space-y-3 pt-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Monthly Price (INR)</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Monthly</label>
                         <input 
                           type="text" 
-                          value={config.plans?.pro?.monthlyPrice ?? 99}
-                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, pro: { ...config.plans.pro, monthlyPrice: Number(e.target.value) } } })}
+                          value={config.pricing_pro_monthly}
+                          onChange={(e) => setConfig({ ...config, pricing_pro_monthly: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Plus Monthly Price (INR)</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Pro Price Yearly (Equivalent/mo)</label>
                         <input 
                           type="text" 
-                          value={config.plans?.pro_plus?.monthlyPrice ?? 149}
-                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, pro_plus: { ...config.plans.pro_plus, monthlyPrice: Number(e.target.value) } } })}
+                          value={config.pricing_pro_yearly}
+                          onChange={(e) => setConfig({ ...config, pricing_pro_yearly: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
@@ -355,11 +367,11 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Label</label>
+                        <label className="text-[11px] font-bold text-zinc-400 block">Enterprise Price Monthly</label>
                         <input 
                           type="text" 
-                          value={config.plans?.enterprise?.priceLabel || 'Custom Pricing'}
-                          onChange={(e) => setConfig({ ...config, plans: { ...config.plans, enterprise: { ...config.plans.enterprise, priceLabel: e.target.value } } })}
+                          value={config.pricing_enterprise}
+                          onChange={(e) => setConfig({ ...config, pricing_enterprise: e.target.value })}
                           className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                         />
                       </div>
@@ -382,14 +394,6 @@ export default function Administration({ currentUser }: { currentUser?: any }) {
                         onChange={(e) => setConfig({ ...config, trial_days: Number(e.target.value) })}
                         className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                       />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-zinc-400 block">Plan Features and Limits (JSON)</label>
-                      <textarea defaultValue={JSON.stringify(config.plans || {}, null, 2)} onBlur={(e) => { try { setConfig({ ...config, plans: JSON.parse(e.target.value) }); } catch { window.alert('Plan JSON is invalid and was not applied.'); } }} rows={12} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-2 text-[10px] text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-zinc-400 block">Promotions (JSON)</label>
-                      <textarea defaultValue={JSON.stringify(config.promotions || [], null, 2)} onBlur={(e) => { try { setConfig({ ...config, promotions: JSON.parse(e.target.value) }); } catch { window.alert('Promotion JSON is invalid and was not applied.'); } }} rows={4} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-2 text-[10px] text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
                     </div>
                   </div>
                 </div>

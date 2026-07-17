@@ -15,8 +15,8 @@ import {
 } from 'lucide-react';
 import { generateContent } from '../../utils/gemini';
 
-export default function Translation() {
-  const [inputText, setInputText] = useState<string>('');
+export default function Translation({ initialText = '' }: { initialText?: string }) {
+  const [inputText, setInputText] = useState<string>(initialText);
   const [translatedText, setTranslatedText] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [detectedLanguage, setDetectedLanguage] = useState<string>('');

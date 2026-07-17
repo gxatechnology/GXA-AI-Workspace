@@ -1,4 +1,5 @@
 export type WorkspaceId = 
+  | 'home'
   | 'dashboard' 
   | 'ai-writing' 
   | 'grammar' 

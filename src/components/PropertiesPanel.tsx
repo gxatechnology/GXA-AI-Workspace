@@ -29,7 +29,6 @@ interface PropertiesPanelProps {
   sharedText: string;
   setSharedText: (text: string) => void;
   onOpenUpgradeModal: () => void;
-  triggerPremiumLock?: (featureName: string, requiredPlan: 'PRO' | 'PRO PLUS') => void;
 }
 
 export default function PropertiesPanel({
