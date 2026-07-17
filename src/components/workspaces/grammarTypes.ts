@@ -2,10 +2,16 @@ export interface SuggestionCard {
   id: string;
   original: string;
   suggested: string;
-  type: 'Grammar' | 'Spelling' | 'Punctuation' | 'Clarity' | 'Style' | 'Tone' | 'Premium';
+  type: 'Grammar' | 'Spelling' | 'Punctuation' | 'Capitalization' | 'Sentence Structure' | 'Agreement' | 'Tense' | 'Articles' | 'Prepositions' | 'Pronouns' | 'Word Choice' | 'Clarity' | 'Fluency' | 'Conciseness' | 'Style' | 'Tone' | 'Formality' | 'Readability' | 'Vocabulary' | 'Repetition' | 'Passive Voice' | 'Redundancy' | 'Wordiness' | 'Consistency' | 'Formatting' | 'Premium';
   desc: string;
   explanation?: string;
   isPremium?: boolean;
+  startOffset?: number;
+  endOffset?: number;
+  severity?: 'error' | 'warning' | 'suggestion';
+  ruleId?: string;
+  confidence?: number;
+  replacementOptions?: string[];
 }
 
 export interface DiffChunk {
