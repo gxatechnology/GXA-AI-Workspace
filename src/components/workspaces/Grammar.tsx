@@ -37,11 +37,10 @@ import {
   Settings2,
   Languages
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { checkGrammar } from '../../utils/grammar';
 import { 
   fetchSystemConfig, 
   fetchUsage, 
-  incrementUsage, 
   isUserPremium, 
   SystemConfig, 
   UsageStats 
@@ -57,8 +56,6 @@ import {
 import { 
   computeDiff, 
   detectLanguage, 
-  getReadingLevel, 
-  getParagraphDensity 
 } from './grammarUtils';
 
 interface GrammarProps {
@@ -106,6 +103,7 @@ export default function Grammar({
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const [rightPanelTab, setRightPanelTab] = useState<'suggestions' | 'analytics' | 'compare'>('suggestions');
   const [selectedLearnMore, setSelectedLearnMore] = useState<SuggestionCard | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
 
   // History state
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
@@ -115,6 +113,11 @@ export default function Grammar({
   const [copied, setCopied] = useState<boolean>(false);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const analysisControllerRef = useRef<AbortController | null>(null);
+  const [hasAnalysis, setHasAnalysis] = useState(false);
+  const [documentVersion, setDocumentVersion] = useState(0);
+  const [dictionary, setDictionary] = useState<string[]>([]);
 
   // Private analytics (local state logs)
   const [analytics, setAnalytics] = useState({
@@ -127,7 +130,7 @@ export default function Grammar({
   });
 
   // Error handle state
-  const [errorState, setErrorState] = useState<'no-internet' | 'unsupported-language' | 'limit-exceeded' | 'large-file' | 'ai-unavailable' | 'timeout' | null>(null);
+  const [errorState, setErrorState] = useState<'no-internet' | 'unsupported-language' | 'unsupported-file' | 'limit-exceeded' | 'large-file' | 'ai-unavailable' | 'timeout' | null>(null);
 
   // Admin Config State
   const [adminConfig, setAdminConfig] = useState<AdminConfig>({
@@ -221,8 +224,9 @@ export default function Grammar({
   useEffect(() => {
     loadLimitsData();
     // Load local history from localStorage
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
     const savedHistory = localStorage.getItem('gxa_grammar_history');
-    if (savedHistory) {
+    if (savedHistory && user && !user.guest && user.role !== 'Guest') {
       try {
         setHistoryItems(JSON.parse(savedHistory));
       } catch (e) {
@@ -257,13 +261,13 @@ export default function Grammar({
   // Determine limits
   const wordLimit = isPremium ? Infinity : ((config?.paraphrase_word_limit || 125) * 4);
   const isExceededLimit = !isPremium && wordLimit !== Infinity && wordCount > wordLimit;
-  const dailyLimit = isPremium ? Infinity : adminConfig.dailyLimit;
+  const dailyLimit = isPremium ? Infinity : (config?.grammar_corrections_limit ?? 5);
   const remainingUses = isPremium ? Infinity : Math.max(0, dailyLimit - (usage?.grammar_corrections || 0));
   const isDailyExceeded = !isPremium && remainingUses <= 0;
 
   // Real-time automatic check trigger (typing debounce)
   useEffect(() => {
-    if (!adminConfig.featureFlags.realTimeChecking) return;
+    if (!isPremium || !adminConfig.featureFlags.realTimeChecking) return;
     if (!localText.trim()) {
       setSuggestions([]);
       setClarityAlerts([]);
@@ -276,7 +280,8 @@ export default function Grammar({
     autoSaveTimerRef.current = setTimeout(() => {
       setAutoSaveStatus('saved');
       // Save current draft
-      localStorage.setItem('gxa_grammar_draft', localText);
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_draft', localText);
       setTimeout(() => setAutoSaveStatus('idle'), 2000);
     }, 1500);
 
@@ -292,7 +297,7 @@ export default function Grammar({
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [localText, adminConfig.featureFlags.realTimeChecking]);
+  }, [localText, isPremium, adminConfig.featureFlags.realTimeChecking]);
 
   // Main diagnostic trigger
   const triggerAnalysis = async (isAutoRun = false) => {
@@ -331,128 +336,49 @@ export default function Grammar({
         return;
       }
 
-      // Gemini prompt requesting holistic structured metrics
-      const promptText = `
-Analyze this user text meticulously for grammatical faults, spelling typos, punctuation anomalies, passive voice issues, complex/wordy structures, sentence structure issues, clarity, reading level, tone metrics, and clarity alerts.
+      analysisControllerRef.current?.abort();
+      const controller = new AbortController();
+      analysisControllerRef.current = controller;
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      const version = documentVersion + 1;
+      setDocumentVersion(version);
+      const enabledCategories = isPremium
+        ? ['Grammar', 'Spelling', 'Punctuation', 'Capitalization', 'Sentence Structure', 'Agreement', 'Tense', 'Articles', 'Prepositions', 'Pronouns', 'Word Choice', 'Clarity', 'Fluency', 'Conciseness', 'Style', 'Tone', 'Formality', 'Readability', 'Vocabulary', 'Repetition', 'Passive Voice', 'Redundancy', 'Wordiness', 'Consistency', 'Formatting']
+        : ['Grammar', 'Spelling', 'Punctuation', 'Capitalization'];
+      const parsedResult = await checkGrammar({
+        text: localText,
+        language: languageText.startsWith('Hindi') ? 'Hindi' : languageText === 'English' ? 'English' : languageText,
+        categories: enabledCategories,
+        ignoredRules: [],
+        dictionary,
+        mode: isAutoRun ? 'realtime' : 'manual',
+        requestId: crypto.randomUUID(),
+        documentVersion: version,
+        goals: { audience: 'General', formality: 'Neutral', intent: 'Inform', domain: 'General' },
+      }, user?.email || 'guest', controller.signal);
 
-User input copy:
-"""
-${localText}
-"""
-
-Return ONLY a valid JSON object matching the exact schema below. Do not wrap in markdown blocks, do not add explanation before or after. Ensure the suggestions list is filtered if there are too many (Limit suggestions returned to max ${adminConfig.suggestionLimit}). Free tier allows only basic spelling, grammar, punctuation checks.
-JSON Structure:
-{
-  "detectedLanguage": "${languageText}",
-  "scores": {
-    "overall": 88,
-    "grammar": 90,
-    "spelling": 95,
-    "clarity": 85,
-    "readability": 80,
-    "tone": 90,
-    "conciseness": 85,
-    "professionalism": 90
-  },
-  "readability": {
-    "readingLevel": "Grade 8 (Middle School)",
-    "readingTime": ${computedReadingTimeSec},
-    "sentenceLength": 15,
-    "wordLength": 5,
-    "paragraphDensity": "Optimal Density"
-  },
-  "tone": {
-    "dominantTone": "Professional",
-    "scores": {
-      "Professional": 80,
-      "Friendly": 40,
-      "Formal": 70,
-      "Casual": 20,
-      "Confident": 65,
-      "Empathetic": 30,
-      "Persuasive": 50,
-      "Academic": 40,
-      "Business": 75
-    }
-  },
-  "suggestions": [
-    {
-      "original": "segment to replace",
-      "suggested": "replacement suggestion",
-      "type": "Grammar",
-      "desc": "Subject-verb agreement fault.",
-      "explanation": "Learn More details on grammar mechanics..."
-    }
-  ],
-  "clarityAlerts": [
-    {
-      "text": "wordy phrase",
-      "type": "Wordiness",
-      "desc": "Simplify this to improve reading clarity."
-    }
-  ]
-}
-`;
-
-      const responseText = await generateContent({
-        prompt: promptText,
-        systemInstruction: "You are a world-class AI grammar auditor and writing assistant. You analyze text accurately, identify constructive corrections, and return your results in the strict structured JSON schema."
-      });
-
-      let parsedResult: any = {};
-      try {
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        parsedResult = JSON.parse(cleanJson);
-      } catch (e) {
-        // Fallback simulated parsed diagnostics for offline compatibility or parsing errors
-        parsedResult = {
-          scores: {
-            overall: 92,
-            grammar: 95,
-            spelling: 90,
-            clarity: 90,
-            readability: 88,
-            tone: 90,
-            conciseness: 90,
-            professionalism: 92
-          },
-          readability: {
-            readingLevel: getReadingLevel(wordCount, sentenceCount, charCount),
-            readingTime: computedReadingTimeSec,
-            sentenceLength: Math.round(wordCount / Math.max(1, sentenceCount)),
-            wordLength: Math.round(charCount / Math.max(1, wordCount)),
-            paragraphDensity: getParagraphDensity(localText, paragraphCount)
-          },
-          tone: {
-            dominantTone: 'Professional',
-            scores: { Professional: 75, Friendly: 45, Formal: 80, Casual: 30, Confident: 70, Empathetic: 40, Persuasive: 60, Academic: 50, Business: 75 }
-          },
-          suggestions: [],
-          clarityAlerts: []
-        };
-      }
-
-      // Update states
-      if (parsedResult.scores) setScores(parsedResult.scores);
-      if (parsedResult.readability) setReadability(parsedResult.readability);
-      if (parsedResult.tone) setToneAnalysis(parsedResult.tone);
-      if (parsedResult.clarityAlerts) setClarityAlerts(parsedResult.clarityAlerts);
-
-      if (parsedResult.suggestions) {
-        const formatted = parsedResult.suggestions.map((s: any, idx: number) => ({
-          ...s,
-          id: s.id || `s-${idx}-${Date.now()}`
-        }));
-        setSuggestions(formatted);
-      }
-
-      // Increment limits usage
-      if (!isPremium) {
-        const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-        const email = user ? user.email : 'guest';
-        const updatedUsage = await incrementUsage(email, 'grammar_corrections');
-        setUsage(updatedUsage);
-      }
+      setScores(parsedResult.scores);
+      setReadability(parsedResult.readability);
+      setToneAnalysis(previous => ({ ...previous, dominantTone: parsedResult.tone?.dominantTone || 'Neutral', scores: parsedResult.tone?.scores || previous.scores }));
+      setClarityAlerts([]);
+      const formatted: SuggestionCard[] = parsedResult.issues.map((issue: any) => ({
+        id: issue.id,
+        original: issue.originalText,
+        suggested: issue.replacements[0],
+        replacementOptions: issue.replacements,
+        type: issue.category,
+        desc: issue.title,
+        explanation: issue.explanation,
+        isPremium: issue.premium,
+        startOffset: issue.startOffset,
+        endOffset: issue.endOffset,
+        severity: issue.severity,
+        ruleId: issue.ruleId,
+        confidence: issue.confidence,
+      }));
+      setSuggestions(formatted);
+      setHasAnalysis(true);
+      setUsage(previous => ({ ...(previous || { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0 }), grammar_corrections: parsedResult.usage.grammar_corrections }));
 
       // Add to internal history
       const historyItem: HistoryItem = {
@@ -460,14 +386,14 @@ JSON Structure:
         timestamp: Date.now(),
         originalText: localText,
         correctedText: '', // Filled if user does corrections or compares
-        score: parsedResult.scores?.overall || 100,
+        score: parsedResult.scores.overall,
         isFavorite: false,
-        suggestionsCount: parsedResult.suggestions?.length || 0
+        suggestionsCount: parsedResult.issues.length
       };
 
       setHistoryItems(prev => {
         const next = [historyItem, ...prev].slice(0, 30);
-        localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+        if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
         return next;
       });
 
@@ -475,16 +401,30 @@ JSON Structure:
       setAnalytics(prev => ({
         ...prev,
         checksRun: prev.checksRun + 1,
-        avgScore: Math.round((prev.avgScore * prev.checksRun + (parsedResult.scores?.overall || 100)) / (prev.checksRun + 1))
+        avgScore: Math.round((prev.avgScore * prev.checksRun + parsedResult.scores.overall) / (prev.checksRun + 1))
       }));
 
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       setErrorState('ai-unavailable');
     } finally {
+      analysisControllerRef.current = null;
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const handleKeyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowHistoryModal(false); setShowSettingsModal(false); setShowHelpModal(false);
+        setShowUpgradeModal(false); setSelectedLearnMore(null); setShowFixAllConfirm(false);
+      } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault(); triggerAnalysis();
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [localText, loading, isExceededLimit, isDailyExceeded]);
 
   // Undo/Redo stack pushes
   const pushToHistoryStack = (text: string) => {
@@ -519,6 +459,7 @@ JSON Structure:
     setLocalText(val);
     if (setSharedText) setSharedText(val);
     pushToHistoryStack(val);
+    setHasAnalysis(false);
   };
 
   // File loading
@@ -529,6 +470,15 @@ JSON Structure:
   };
 
   const readFileContent = (file: File) => {
+    const extension = file.name.toLowerCase().split('.').pop();
+    if (!extension || !['txt', 'md'].includes(extension)) {
+      setErrorState('unsupported-file');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorState('large-file');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -538,6 +488,7 @@ JSON Structure:
         pushToHistoryStack(content);
       }
     };
+    reader.onerror = () => setErrorState('large-file');
     reader.readAsText(file);
   };
 
@@ -562,13 +513,16 @@ JSON Structure:
 
   // Suggestion actions
   const handleAcceptSuggestion = (id: string, original: string, suggested: string) => {
-    const index = localText.indexOf(original);
-    if (index !== -1) {
-      const newText = localText.slice(0, index) + suggested + localText.slice(index + original.length);
+    const issue = suggestions.find(item => item.id === id);
+    const start = issue?.startOffset;
+    const end = issue?.endOffset;
+    if (typeof start === 'number' && typeof end === 'number' && localText.slice(start, end) === original) {
+      const newText = localText.slice(0, start) + suggested + localText.slice(end);
       setLocalText(newText);
       if (setSharedText) setSharedText(newText);
       pushToHistoryStack(newText);
-    }
+      setHasAnalysis(false);
+    } else setErrorState('ai-unavailable');
     setSuggestions(prev => prev.filter(s => s.id !== id));
     setAnalytics(prev => ({ ...prev, acceptedCount: prev.acceptedCount + 1 }));
   };
@@ -587,11 +541,12 @@ JSON Structure:
   const handleConfirmFixAll = () => {
     setPreFixAllText(localText);
     let tempText = localText;
-    suggestions.forEach(s => {
-      const idx = tempText.indexOf(s.original);
-      if (idx !== -1) {
-        tempText = tempText.slice(0, idx) + s.suggested + tempText.slice(idx + s.original.length);
-      }
+    const safeIssues = suggestions
+      .filter(issue => typeof issue.startOffset === 'number' && typeof issue.endOffset === 'number' && (issue.confidence ?? 0) >= 0.8 && ['Grammar', 'Spelling', 'Punctuation', 'Capitalization', 'Agreement', 'Tense', 'Articles', 'Prepositions', 'Pronouns'].includes(issue.type))
+      .sort((a, b) => (b.startOffset || 0) - (a.startOffset || 0));
+    safeIssues.forEach(issue => {
+      const start = issue.startOffset!; const end = issue.endOffset!;
+      if (tempText.slice(start, end) === issue.original) tempText = tempText.slice(0, start) + issue.suggested + tempText.slice(end);
     });
     setLocalText(tempText);
     if (setSharedText) setSharedText(tempText);
@@ -599,14 +554,7 @@ JSON Structure:
     setSuggestions([]);
     setShowFixAllConfirm(false);
     
-    // Smooth visual feedback scores
-    setScores(prev => ({
-      ...prev,
-      overall: 100,
-      grammar: 100,
-      spelling: 100,
-      clarity: 100
-    }));
+    setHasAnalysis(false);
   };
 
   const handleUndoFixAll = () => {
@@ -643,32 +591,52 @@ JSON Structure:
     URL.revokeObjectURL(url);
   };
 
-  const handleClipboardCopy = () => {
-    navigator.clipboard.writeText(localText);
-    setCopied(true);
-    setAnalytics(prev => ({ ...prev, copyCount: prev.copyCount + 1 }));
-    setTimeout(() => setCopied(false), 2000);
+  const handleClipboardCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(localText);
+      setCopied(true);
+      setAnalytics(prev => ({ ...prev, copyCount: prev.copyCount + 1 }));
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setErrorState('ai-unavailable');
+    }
+  };
+
+  const addToDictionary = (word: string, issueId: string) => {
+    const entry = word.trim();
+    if (!entry || entry.length > 100) return;
+    setDictionary(current => current.some(item => item === entry) ? current : [...current, entry]);
+    handleIgnoreSuggestion(issueId);
+  };
+
+  const focusIssue = (issue: SuggestionCard) => {
+    if (typeof issue.startOffset !== 'number' || typeof issue.endOffset !== 'number') return;
+    editorRef.current?.focus();
+    editorRef.current?.setSelectionRange(issue.startOffset, issue.endOffset);
   };
 
   // Local Save Actions
-  const handleSaveToProject = () => {
-    const projects = JSON.parse(localStorage.getItem('gxa_workspace_projects') || '[]');
-    const newProj = {
-      id: `p-${Date.now()}`,
-      name: `Revision - ${localText.slice(0, 20)}...`,
-      content: localText,
-      timestamp: Date.now(),
-      score: scores.overall
-    };
-    localStorage.setItem('gxa_workspace_projects', JSON.stringify([newProj, ...projects]));
-    alert('Document successfully saved to your project space!');
+  const handleSaveToProject = async () => {
+    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+    if (!user || user.guest || user.role === 'Guest') {
+      alert('Sign in to save this document. Your text will remain in the editor.');
+      return;
+    }
+    const response = await fetch('/api/documents', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` },
+      body: JSON.stringify({ name: `Grammar revision - ${localText.slice(0, 30) || 'Untitled'}`, type: 'Grammar Document', content: localText, toolUsed: 'Grammar Checker', score: hasAnalysis ? scores.overall : null }),
+    });
+    if (!response.ok) alert('The document could not be saved. Your text remains available.');
+    else alert('Document saved to your workspace.');
   };
 
   // Toggle Favorite/Delete History
   const toggleFavoriteHistory = (id: string) => {
     setHistoryItems(prev => {
       const next = prev.map(item => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item);
-      localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
       return next;
     });
   };
@@ -676,7 +644,8 @@ JSON Structure:
   const deleteHistoryItem = (id: string) => {
     setHistoryItems(prev => {
       const next = prev.filter(item => item.id !== id);
-      localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
+      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
       return next;
     });
   };
@@ -696,6 +665,9 @@ JSON Structure:
 
   // Highlight word level diff
   const diffChunks = computeDiff(preFixAllText || '', localText);
+  const issueCategories = ['All', ...Array.from(new Set(suggestions.map(issue => issue.type)))];
+  const visibleSuggestions = activeCategory === 'All' ? suggestions : suggestions.filter(issue => issue.type === activeCategory);
+  const safeFixCount = suggestions.filter(issue => (issue.confidence ?? 0) >= 0.8 && ['Grammar', 'Spelling', 'Punctuation', 'Capitalization', 'Agreement', 'Tense', 'Articles', 'Prepositions', 'Pronouns'].includes(issue.type)).length;
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 pb-20 text-slate-800 dark:text-zinc-100 flex flex-col font-sans select-text">
@@ -755,20 +727,20 @@ JSON Structure:
             <span className="hidden sm:inline">Help</span>
           </button>
 
-          {/* Inline Admin control button */}
-          <button 
+          {/* Protected admin control */}
+          {currentUser?.role === 'SuperAdmin' && <button
             onClick={() => setShowAdminPanel(!showAdminPanel)} 
             aria-label="Toggle admin diagnostics"
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition ${showAdminPanel ? 'bg-teal-500/10 text-teal-600' : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
           >
             <Settings2 className="h-4 w-4" />
             <span>Admin</span>
-          </button>
+          </button>}
         </div>
       </header>
 
       {/* Admin Panel Tab overlay block */}
-      {showAdminPanel && (
+      {currentUser?.role === 'SuperAdmin' && showAdminPanel && (
         <div className="mt-4 p-5 bg-teal-500/5 dark:bg-teal-500/10 border border-teal-500/20 rounded-2xl text-left">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-sm font-bold text-teal-600 dark:text-teal-400 flex items-center gap-1.5">
@@ -864,6 +836,7 @@ JSON Structure:
               <h4 className="text-xs font-bold text-rose-600 dark:text-rose-400">
                 {errorState === 'no-internet' && 'Connectivity Lost'}
                 {errorState === 'unsupported-language' && 'Unsupported Language Detected'}
+                {errorState === 'unsupported-file' && 'Unsupported File Type'}
                 {errorState === 'limit-exceeded' && 'Word or Corrections Limit Exceeded'}
                 {errorState === 'large-file' && 'Document Too Voluminous'}
                 {errorState === 'ai-unavailable' && 'AI Auditing Engine Unreachable'}
@@ -872,6 +845,7 @@ JSON Structure:
               <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
                 {errorState === 'no-internet' && 'Please verify your internet connection settings and try again.'}
                 {errorState === 'unsupported-language' && `The grammar engine detected ${detectedLang}, which is currently restricted in Admin configs.`}
+                {errorState === 'unsupported-file' && 'Upload a TXT or Markdown file. Your existing document is unchanged.'}
                 {errorState === 'limit-exceeded' && 'You have reached the free processing threshold. Please upgrade to Pro to unlock unlimited usage.'}
                 {errorState === 'large-file' && 'The document exceeds 35,000 characters. Please break it into smaller chapters.'}
                 {errorState === 'ai-unavailable' && 'The network model could not finalize this audit. Please trigger retry manually.'}
@@ -938,6 +912,7 @@ JSON Structure:
                 >
                   <Redo className="h-4 w-4" />
                 </button>
+                {loading ? <button type="button" onClick={() => analysisControllerRef.current?.abort()} className="ml-2 min-h-11 rounded-xl border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-900/50">Stop</button> : <button type="button" onClick={() => triggerAnalysis()} disabled={!localText.trim() || isExceededLimit || isDailyExceeded} className="ml-2 min-h-11 rounded-xl bg-teal-600 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"><CheckSquare className="mr-1 inline h-4 w-4" />Check Writing</button>}
               </div>
             </div>
 
@@ -954,6 +929,7 @@ JSON Structure:
               ) : null}
 
               <textarea
+                ref={editorRef}
                 value={localText}
                 onChange={handleEditorChange}
                 className="w-full flex-1 bg-transparent border-0 outline-none focus:ring-0 text-slate-800 dark:text-zinc-100 text-sm md:text-base leading-relaxed resize-none h-full"
@@ -1017,7 +993,7 @@ JSON Structure:
           </div>
 
           {/* Real Time Core Metric Score widgets below Editor (Spacious design) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {hasAnalysis ? <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" aria-label="Writing score from the latest completed check">
             
             {/* Overall Quality dial */}
             <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800 rounded-xl p-4 flex items-center gap-3 shadow-xs">
@@ -1071,7 +1047,7 @@ JSON Structure:
               </div>
             </div>
 
-          </div>
+          </div> : <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-xs text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">Writing scores will appear after a completed check.</div>}
         </section>
 
         {/* RIGHT COLUMN: Interactive Suggestions & Score Insights (30% Desktop / 35% Tablet) */}
@@ -1087,6 +1063,7 @@ JSON Structure:
             </button>
             <button 
               onClick={() => setRightPanelTab('analytics')}
+              disabled={!hasAnalysis}
               className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'analytics' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Writing Insights
@@ -1114,12 +1091,13 @@ JSON Structure:
                 {suggestions.length > 0 ? (
                   <button 
                     onClick={handleFixAllClick}
+                    disabled={safeFixCount === 0}
                     className="bg-teal-500 hover:bg-teal-600 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg transition"
                   >
-                    Fix All ({suggestions.length})
+                    Fix All Safe ({safeFixCount})
                   </button>
                 ) : (
-                  <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-0.5 rounded-full font-bold">All Clear</span>
+                  <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-0.5 rounded-full font-bold">{hasAnalysis ? 'No issues found' : 'Not checked'}</span>
                 )}
               </div>
 
@@ -1136,8 +1114,11 @@ JSON Structure:
 
               {/* Suggestions Cards list */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3 text-left">
+                {suggestions.length > 0 && <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Correction category filters">
+                  {issueCategories.map(category => <button type="button" key={category} aria-pressed={activeCategory === category} onClick={() => setActiveCategory(category)} className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-bold ${activeCategory === category ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300'}`}>{category}</button>)}
+                </div>}
                 {suggestions.length > 0 ? (
-                  suggestions.map((sug) => (
+                  visibleSuggestions.map((sug) => (
                     <div 
                       key={sug.id} 
                       className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-4 rounded-xl space-y-2 relative"
@@ -1183,6 +1164,8 @@ JSON Structure:
                         >
                           Learn More
                         </button>
+                        <button type="button" onClick={() => focusIssue(sug)} className="px-2.5 bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-300 hover:bg-slate-200 text-[10px] font-bold rounded transition">Locate</button>
+                        {sug.type === 'Spelling' && <button type="button" onClick={() => addToDictionary(sug.original, sug.id)} className="px-2.5 bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-300 hover:bg-slate-200 text-[10px] font-bold rounded transition">Add to dictionary</button>}
                       </div>
                     </div>
                   ))
@@ -1190,8 +1173,8 @@ JSON Structure:
                   <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 space-y-2 py-10">
                     <Smile className="h-8 w-8 text-slate-300 dark:text-zinc-700" />
                     <div>
-                      <h4 className="text-xs font-bold text-slate-600 dark:text-zinc-400">All Clear</h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Run checking assessment to search spelling, grammar, and syntax issues.</p>
+                      <h4 className="text-xs font-bold text-slate-600 dark:text-zinc-400">{hasAnalysis ? 'No issues found in enabled checks' : 'Ready to check'}</h4>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{hasAnalysis ? 'Review the text for context before publishing.' : 'Choose Check Writing to analyze grammar, spelling, punctuation and capitalization.'}</p>
                     </div>
                   </div>
                 )}
@@ -1203,17 +1186,18 @@ JSON Structure:
                   </h4>
                   <div className="space-y-2">
                     {premiumFeaturesList.map((pf, idx) => (
-                      <div 
+                      <button type="button"
                         key={idx}
                         onClick={() => setShowUpgradeModal(true)}
-                        className="p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800 rounded-xl flex justify-between items-center hover:border-amber-500/40 cursor-pointer transition"
+                        aria-label={`${pf.name}. Premium feature. View upgrade options.`}
+                        className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800 rounded-xl flex justify-between items-center hover:border-amber-500/40 cursor-pointer transition"
                       >
                         <div className="text-left">
                           <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-300 block">{pf.name}</span>
                           <span className="text-[9px] text-slate-400">{pf.desc}</span>
                         </div>
                         <Lock className="h-3 w-3 text-slate-300 dark:text-zinc-600" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1508,6 +1492,15 @@ JSON Structure:
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" defaultChecked />
                   <span>Always save draft on text modify</span>
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <span className="font-bold text-slate-500 block">Checking mode</span>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={isPremium && adminConfig.featureFlags.realTimeChecking} disabled={!isPremium} onChange={(event) => setAdminConfig(current => ({ ...current, featureFlags: { ...current.featureFlags, realTimeChecking: event.target.checked } }))} />
+                  <span>Real-time checking after a short pause</span>
+                  {!isPremium && <button type="button" onClick={() => setShowUpgradeModal(true)} className="ml-auto text-[10px] font-bold text-amber-600">Pro</button>}
                 </label>
               </div>
 
