@@ -94,6 +94,16 @@ export default function Administration() {
     business_daily_generation_limit: 10,
     business_pro_daily_generation_limit: 100,
     business_character_limit: 20000,
+    media_free_generation_limit: 3,
+    media_pro_generation_limit: 25,
+    media_pro_plus_generation_limit: 100,
+    media_free_vision_limit: 5,
+    media_pro_vision_limit: 50,
+    media_pro_plus_vision_limit: 200,
+    media_character_limit: 4000,
+    media_upload_size_mb: 10,
+    media_batch_limit: 4,
+    media_asset_limit: 100,
     pricing_pro_monthly: "₹99",
     pricing_pro_yearly: "₹99",
     pricing_enterprise: "Custom Pricing",
@@ -381,6 +391,41 @@ export default function Administration() {
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-zinc-400 block">Business brief characters per request</label>
                     <input type="number" min="1" value={config.business_character_limit} onChange={(e) => setConfig({ ...config, business_character_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
+                  </div>
+
+                  <div className="border-t border-zinc-800 pt-3">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-indigo-400">Media and Vision</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ['media_free_generation_limit', 'Free image generations'],
+                        ['media_pro_generation_limit', 'Pro image generations'],
+                        ['media_pro_plus_generation_limit', 'Pro Plus generations'],
+                        ['media_free_vision_limit', 'Free vision/OCR'],
+                        ['media_pro_vision_limit', 'Pro vision/OCR'],
+                        ['media_pro_plus_vision_limit', 'Pro Plus vision/OCR'],
+                        ['media_character_limit', 'Prompt characters'],
+                        ['media_upload_size_mb', 'Upload size (MB)'],
+                        ['media_batch_limit', 'Maximum batch'],
+                        ['media_asset_limit', 'Saved asset limit'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="space-y-1 text-[10px] font-bold text-zinc-400">
+                          <span className="block">{label}</span>
+                          <input type="number" min="0" value={config[key] ?? 0} onChange={(event) => setConfig({ ...config, [key]: Number(event.target.value) })} className="w-full rounded border border-zinc-850 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-300 focus:border-indigo-500 focus:outline-none" />
+                        </label>
+                      ))}
+                    </div>
+                    {Array.isArray(config.media_tools) && <details className="mt-3 rounded-lg border border-zinc-800 p-2">
+                      <summary className="cursor-pointer text-[10px] font-bold text-zinc-400">Tool availability and plan access ({config.media_tools.filter((entry: any) => entry?.enabled !== false).length} enabled)</summary>
+                      <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
+                        {config.media_tools.map((entry: any, index: number) => {
+                          const record = typeof entry === 'string' ? { id: entry, name: entry, requiredPlan: 'free', enabled: true } : entry;
+                          return <div key={`${record.id}-${index}`} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded bg-zinc-950 px-2 py-1.5">
+                            <label className="flex min-w-0 items-center gap-2 text-[10px] text-zinc-300"><input type="checkbox" checked={record.enabled !== false} onChange={(event) => setConfig({ ...config, media_tools: config.media_tools.map((item: any, itemIndex: number) => itemIndex === index ? { ...(typeof item === 'string' ? { id: item, name: item } : item), enabled: event.target.checked } : item) })} /><span className="truncate">{record.name || record.id}</span></label>
+                            <select value={record.requiredPlan || 'free'} onChange={(event) => setConfig({ ...config, media_tools: config.media_tools.map((item: any, itemIndex: number) => itemIndex === index ? { ...(typeof item === 'string' ? { id: item, name: item } : item), requiredPlan: event.target.value } : item) })} className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-[9px] text-zinc-300"><option value="free">Free</option><option value="pro">Pro</option><option value="pro_plus">Pro Plus</option></select>
+                          </div>;
+                        })}
+                      </div>
+                    </details>}
                   </div>
 
                   <div className="space-y-1"><label className="text-[11px] font-bold text-zinc-400 block">Career AI generations per day</label><input type="number" min="0" value={config.career_daily_ai_limit} onChange={(e) => setConfig({ ...config, career_daily_ai_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" /></div>

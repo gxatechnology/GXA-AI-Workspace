@@ -397,6 +397,7 @@ export default function BusinessStudio({
           <button disabled={!output} onClick={() => handoff('translation')} className="rounded-lg border px-3 py-2 font-bold"><Languages className="mr-1 inline h-3 w-3" />Translate</button>
           <button disabled={!output} onClick={() => handoff('ai-humanizer')} className="rounded-lg border px-3 py-2 font-bold">Humanize</button>
           <button disabled={!output} onClick={() => handoff('grammar')} className="rounded-lg border px-3 py-2 font-bold">Readability review</button>
+          <button disabled={!output} onClick={() => handoff('images')} className="rounded-lg border px-3 py-2 font-bold">Create visual</button>
         </div>
       </div>
     </section>}

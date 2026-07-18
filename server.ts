@@ -15,6 +15,12 @@ import { analyzeAts, buildCareerPrompt, CareerValidationError, emptyCareerProfil
 import { CAREER_TOOLS, RESUME_TEMPLATES } from './shared/careerRegistry.js';
 import { assertBusinessEntitlement, buildBusinessPrompt, BusinessValidationError, normalizeBrandKit, normalizeBusinessPlan, validateBusinessRequest, validateGeneratedOutput } from './server/business.js';
 import { BUSINESS_EXPORT_FORMATS, BUSINESS_LANGUAGES, BUSINESS_TOOLS, BUSINESS_TONES, CALENDAR_CADENCES, EMAIL_MODES } from './shared/businessRegistry.js';
+import { MEDIA_ASPECT_RATIOS, MEDIA_EXPORT_FORMATS, MEDIA_QUALITIES, MEDIA_STYLES, MEDIA_TOOLS } from './shared/mediaRegistry.js';
+import {
+  buildEditPrompt, buildGeneratePrompt, buildVisionPrompt, MediaValidationError,
+  normalizeMediaPlan, publicMediaTools, safeMediaAsset, validateEditRequest,
+  validateGenerateRequest, validateVisionRequest,
+} from './server/media.js';
 
 dotenv.config();
 
@@ -28,7 +34,7 @@ app.use(express.json({ limit: '24mb' }));
 const DB_FILE = path.join(__dirname, 'db.json');
 
 function readDb() {
-  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, config: {}, usage: {} };
+  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {}, config: {}, usage: {} };
   const defaultConfig = {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
@@ -60,6 +66,19 @@ function readDb() {
     business_character_limit: 20000,
     business_tools: BUSINESS_TOOLS,
     business_languages: BUSINESS_LANGUAGES,
+    media_free_generation_limit: 3,
+    media_pro_generation_limit: 25,
+    media_pro_plus_generation_limit: 100,
+    media_free_vision_limit: 5,
+    media_pro_vision_limit: 50,
+    media_pro_plus_vision_limit: 200,
+    media_character_limit: 4000,
+    media_upload_size_mb: 10,
+    media_batch_limit: 4,
+    media_asset_limit: 100,
+    media_image_model: 'gemini-3.1-flash-image',
+    media_vision_model: 'gemini-3.1-flash-lite',
+    media_tools: MEDIA_TOOLS,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
@@ -100,7 +119,7 @@ function readDb() {
       documents: {},
       chats: {},
       analyses: {},
-      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {},
+      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {},
       config: defaultConfig,
       usage: {}
     };
@@ -110,7 +129,7 @@ function readDb() {
   try {
     db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, config: defaultConfig, usage: {} };
+    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {}, config: defaultConfig, usage: {} };
   }
 
   // Backfill new configuration keys without replacing admin-managed values.
@@ -128,7 +147,7 @@ function readDb() {
     db.usage = {};
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
-  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets']) if (!db[store]) db[store] = {};
+  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets']) if (!db[store]) db[store] = {};
   return db;
 }
 
@@ -755,6 +774,259 @@ app.post('/api/gemini/generate', async (req, res) => {
     console.error('Gemini proxy error:', error);
     res.status(500).json({ error: error.message || 'Error generating content from Gemini API' });
   }
+});
+
+const mediaUsageLimit = (config: any, plan: 'free' | 'pro' | 'pro_plus', kind: 'generation' | 'vision') => {
+  const value = Number(config[`media_${plan}_${kind}_limit`]);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+};
+
+const mediaProviderStatus = (error: any) => {
+  const providerStatus = Number(error?.status || error?.statusCode || 0);
+  if (providerStatus === 429) return { status: 429, code: 'PROVIDER_RATE_LIMIT', error: 'The media provider rate limit was reached. Your work is preserved; try again shortly.' };
+  if (providerStatus === 408 || providerStatus === 504) return { status: 504, code: 'PROVIDER_TIMEOUT', error: 'The media provider timed out. Your work is preserved.' };
+  return { status: 502, code: 'PROVIDER_UNAVAILABLE', error: 'The media provider is temporarily unavailable. Your work is preserved.' };
+};
+
+app.get('/api/media/config', (req, res) => {
+  const db = readDb();
+  const userId = getUserId(req);
+  const plan = normalizeMediaPlan(userId ? db.users[userId]?.subscription : 'free');
+  const today = new Date().toISOString().slice(0, 10);
+  const usageId = userId || 'guest';
+  const usage = db.usage[usageId]?.[today] || {};
+  res.json({
+    tools: publicMediaTools(db.config.media_tools),
+    aspectRatios: MEDIA_ASPECT_RATIOS,
+    qualities: MEDIA_QUALITIES,
+    styles: MEDIA_STYLES,
+    exportFormats: MEDIA_EXPORT_FORMATS,
+    currentPlan: plan,
+    limits: {
+      generation: mediaUsageLimit(db.config, plan, 'generation'),
+      vision: mediaUsageLimit(db.config, plan, 'vision'),
+      character: Number(db.config.media_character_limit || 4000),
+      uploadSizeMb: Number(db.config.media_upload_size_mb || 10),
+      batch: Number(db.config.media_batch_limit || 4),
+      assets: Number(db.config.media_asset_limit || 100),
+    },
+    usage: {
+      generation: Number(usage.media_generations || 0),
+      vision: Number(usage.media_vision || 0),
+    },
+    capabilities: {
+      aiProvider: Boolean(process.env.GEMINI_API_KEY),
+      svg: true,
+      localEditing: true,
+      barcode: 'browser',
+    },
+  });
+});
+
+app.post('/api/media/generate', async (req, res) => {
+  const db = readDb();
+  const userId = getUserId(req);
+  const usageId = userId || 'guest';
+  const plan = normalizeMediaPlan(userId ? db.users[userId]?.subscription : 'free');
+  try {
+    const request = validateGenerateRequest(req.body, plan, Number(db.config.media_character_limit || 4000), Number(db.config.media_batch_limit || 4), publicMediaTools(db.config.media_tools));
+    if (request.quality === '4K' && plan !== 'pro_plus') throw new MediaValidationError('4K output requires Pro Plus. Your brief is preserved.', 403, 'PREMIUM_QUALITY');
+    if (request.batch > 1 && plan === 'free') throw new MediaValidationError('Batch generation requires Pro. Your brief is preserved.', 403, 'PREMIUM_BATCH');
+    const today = new Date().toISOString().slice(0, 10);
+    db.usage[usageId] ||= {};
+    db.usage[usageId][today] ||= {};
+    const used = Number(db.usage[usageId][today].media_generations || 0);
+    const limit = mediaUsageLimit(db.config, plan, 'generation');
+    if (limit <= 0 || used + request.batch > limit) {
+      return res.status(429).json({ error: 'The configured image-generation limit has been reached. Your brief is preserved.', code: 'MEDIA_GENERATION_LIMIT', usage: { used, limit } });
+    }
+    let brandKit: any = null;
+    if (req.body.brandKitId) {
+      if (!userId) return res.status(401).json({ error: 'Sign in to use a private Brand Kit.', code: 'AUTH_REQUIRED' });
+      brandKit = (db.brandKits[userId] || []).find((item: any) => item.id === req.body.brandKitId);
+      if (!brandKit) return res.status(403).json({ error: 'Brand Kit is not available to this user.', code: 'BRAND_KIT_ACCESS' });
+    }
+    const built = buildGeneratePrompt(request, brandKit);
+    const images: Array<{ image: string; mimeType: string }> = [];
+    for (let index = 0; index < request.batch; index += 1) {
+      const interaction = await getGeminiClient().interactions.create({
+        model: String(db.config.media_image_model || 'gemini-3.1-flash-image'),
+        input: [{ type: 'text', text: `${built.systemInstruction}\n\n${built.prompt}${request.batch > 1 ? `\nVARIATION: ${index + 1} of ${request.batch}` : ''}` }],
+        response_format: { type: 'image', mime_type: 'image/png', aspect_ratio: request.aspectRatio, image_size: request.quality },
+      });
+      const data = interaction.output_image?.data;
+      const mimeType = interaction.output_image?.mime_type || 'image/png';
+      if (!data) throw new MediaValidationError('The image provider returned no image.', 502, 'EMPTY_MEDIA_OUTPUT');
+      images.push({ image: `data:${mimeType};base64,${data}`, mimeType });
+    }
+    db.usage[usageId][today].media_generations = used + images.length;
+    writeDb(db);
+    res.json({ images, usage: { used: used + images.length, limit }, synthesized: true });
+  } catch (error: any) {
+    if (error instanceof MediaValidationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    const safe = mediaProviderStatus(error);
+    console.error('Media generation provider error:', safe.code);
+    res.status(safe.status).json(safe);
+  }
+});
+
+app.post('/api/media/edit', async (req, res) => {
+  const db = readDb();
+  const userId = getUserId(req);
+  const usageId = userId || 'guest';
+  const plan = normalizeMediaPlan(userId ? db.users[userId]?.subscription : 'free');
+  try {
+    const request = validateEditRequest(req.body, plan, Number(db.config.media_upload_size_mb || 10), Number(db.config.media_character_limit || 4000), publicMediaTools(db.config.media_tools));
+    const today = new Date().toISOString().slice(0, 10);
+    db.usage[usageId] ||= {};
+    db.usage[usageId][today] ||= {};
+    const used = Number(db.usage[usageId][today].media_generations || 0);
+    const limit = mediaUsageLimit(db.config, plan, 'generation');
+    if (limit <= 0 || used >= limit) return res.status(429).json({ error: 'The configured media-editing limit has been reached. Your image is preserved.', code: 'MEDIA_GENERATION_LIMIT', usage: { used, limit } });
+    const built = buildEditPrompt(request);
+    const interaction = await getGeminiClient().interactions.create({
+      model: String(db.config.media_image_model || 'gemini-3.1-flash-image'),
+      input: [
+        { type: 'image', mime_type: request.image.mimeType, data: request.image.data },
+        { type: 'text', text: `${built.systemInstruction}\n\n${built.prompt}` },
+      ],
+      response_format: { type: 'image', mime_type: 'image/png' },
+    });
+    const data = interaction.output_image?.data;
+    const mimeType = interaction.output_image?.mime_type || 'image/png';
+    if (!data) throw new MediaValidationError('The image provider returned no edited image.', 502, 'EMPTY_MEDIA_OUTPUT');
+    db.usage[usageId][today].media_generations = used + 1;
+    writeDb(db);
+    res.json({ image: `data:${mimeType};base64,${data}`, mimeType, usage: { used: used + 1, limit }, synthesized: true });
+  } catch (error: any) {
+    if (error instanceof MediaValidationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    const safe = mediaProviderStatus(error);
+    console.error('Media editing provider error:', safe.code);
+    res.status(safe.status).json(safe);
+  }
+});
+
+app.post('/api/media/vision', async (req, res) => {
+  const db = readDb();
+  const userId = getUserId(req);
+  const usageId = userId || 'guest';
+  const plan = normalizeMediaPlan(userId ? db.users[userId]?.subscription : 'free');
+  try {
+    const request = validateVisionRequest(req.body, plan, Number(db.config.media_upload_size_mb || 10), Number(db.config.media_character_limit || 4000), publicMediaTools(db.config.media_tools));
+    const today = new Date().toISOString().slice(0, 10);
+    db.usage[usageId] ||= {};
+    db.usage[usageId][today] ||= {};
+    const used = Number(db.usage[usageId][today].media_vision || 0);
+    const limit = mediaUsageLimit(db.config, plan, 'vision');
+    if (limit <= 0 || used >= limit) return res.status(429).json({ error: 'The configured vision/OCR limit has been reached. Your image is preserved.', code: 'MEDIA_VISION_LIMIT', usage: { used, limit } });
+    const built = buildVisionPrompt(request);
+    const response = await getGeminiClient().models.generateContent({
+      model: String(db.config.media_vision_model || 'gemini-3.1-flash-lite'),
+      contents: [{ role: 'user', parts: [
+        { inlineData: { mimeType: request.image.mimeType, data: request.image.data } },
+        { text: built.prompt },
+      ] }],
+      config: { systemInstruction: built.systemInstruction },
+    });
+    const extractedText = String(response.text || '').trim();
+    if (!extractedText) throw new MediaValidationError('The vision provider returned no analysis.', 502, 'EMPTY_MEDIA_OUTPUT');
+    let text = extractedText;
+    let translatedImage: string | undefined;
+    if (request.tool.id === 'image-translate') {
+      const target = TRANSLATION_LANGUAGES.find((language) => language.name.toLowerCase() === request.targetLanguage.toLowerCase() || language.code === request.targetLanguage.toLowerCase());
+      if (!target) throw new MediaValidationError('Choose a target language configured in Translation Studio.', 400, 'UNSUPPORTED_TARGET_LANGUAGE');
+      try {
+        const translationRequest = validateTranslationRequest({ text: extractedText, sourceLanguage: 'auto', targetLanguage: target.code, mode: 'Standard', preserve: { formatting: true, headings: true, numbers: true, dates: true, tables: true } }, Number(db.config.translation_character_limit || 20000));
+        const translationPrompt = buildTranslationPrompt(translationRequest);
+        const translated = await generateWithRetryAndFallback(translationPrompt.prompt, { systemInstruction: translationPrompt.systemInstruction });
+        const translatedText = String(translated.text || '').trim();
+        if (!translatedText) throw new MediaValidationError('Translation Studio returned no translated text.', 502, 'EMPTY_TRANSLATION');
+        text = `Extracted text\n\n${extractedText}\n\nTranslation (${target.name})\n\n${translatedText}`;
+        const generationUsed = Number(db.usage[usageId][today].media_generations || 0);
+        const generationLimit = mediaUsageLimit(db.config, plan, 'generation');
+        if (generationUsed < generationLimit) {
+          try {
+            const interaction = await getGeminiClient().interactions.create({
+              model: String(db.config.media_image_model || 'gemini-3.1-flash-image'),
+              input: [
+                { type: 'image', mime_type: request.image.mimeType, data: request.image.data },
+                { type: 'text', text: `Replace only the visible source-language text with this verified ${target.name} translation while preserving the original layout, imagery and hierarchy where possible. Do not add text or facts.\n\n<verified_translation>\n${translatedText}\n</verified_translation>` },
+              ],
+              response_format: { type: 'image', mime_type: 'image/png' },
+            });
+            if (interaction.output_image?.data) {
+              const translatedMime = interaction.output_image.mime_type || 'image/png';
+              translatedImage = `data:${translatedMime};base64,${interaction.output_image.data}`;
+              db.usage[usageId][today].media_generations = generationUsed + 1;
+            }
+          } catch {
+            // Text translation remains usable when image-layout rendering is unsupported.
+          }
+        }
+      } catch (error) {
+        if (error instanceof TranslationValidationError && /different from the source/i.test(error.message)) {
+          text = `Extracted text\n\n${extractedText}\n\nThe detected text is already in ${target.name}.`;
+        } else {
+          throw error;
+        }
+      }
+    }
+    db.usage[usageId][today].media_vision = used + 1;
+    writeDb(db);
+    res.json({ text, image: translatedImage, usage: { used: used + 1, limit }, disclaimer: 'Vision and OCR results are probabilistic. Review important text and values against the original image.' });
+  } catch (error: any) {
+    if (error instanceof MediaValidationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    const safe = mediaProviderStatus(error);
+    console.error('Media vision provider error:', safe.code);
+    res.status(safe.status).json(safe);
+  }
+});
+
+app.get('/api/media/assets', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to access your private media library.' });
+  res.json({ assets: readDb().mediaAssets[userId] || [] });
+});
+
+app.post('/api/media/assets', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save media assets.' });
+  const db = readDb();
+  try {
+    const records = db.mediaAssets[userId] || [];
+    const limit = Number(db.config.media_asset_limit || 100);
+    if (limit >= 0 && records.length >= limit) return res.status(429).json({ error: 'The configured media-library limit has been reached.', code: 'MEDIA_ASSET_LIMIT', limit });
+    const payload = safeMediaAsset(req.body, userId, Number(db.config.media_upload_size_mb || 10));
+    if (payload.projectId && !(db.projects[userId] || []).some((project: any) => project.id === payload.projectId)) {
+      return res.status(403).json({ error: 'Project is not available to this user.', code: 'PROJECT_ACCESS' });
+    }
+    const parent = req.body.parentId ? records.find((item: any) => item.id === req.body.parentId) : null;
+    if (req.body.parentId && !parent) return res.status(403).json({ error: 'The parent asset is not available to this user.', code: 'ASSET_ACCESS' });
+    const asset = {
+      id: crypto.randomUUID(), ...payload,
+      parentId: parent?.id || null,
+      version: parent ? Number(parent.version || 1) + 1 : 1,
+      createdAt: new Date().toISOString(),
+    };
+    db.mediaAssets[userId] ||= [];
+    db.mediaAssets[userId].unshift(asset);
+    writeDb(db);
+    res.status(201).json({ asset });
+  } catch (error) {
+    if (error instanceof MediaValidationError) return res.status(error.status).json({ error: error.message, code: error.code });
+    res.status(400).json({ error: 'The media asset could not be saved.', code: 'INVALID_MEDIA_ASSET' });
+  }
+});
+
+app.delete('/api/media/assets/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const db = readDb();
+  const records = db.mediaAssets[userId] || [];
+  if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Media asset not found.' });
+  db.mediaAssets[userId] = records.filter((item: any) => item.id !== req.params.id);
+  writeDb(db);
+  res.json({ success: true });
 });
 
 app.post('/api/documents/analyze', async (req, res) => {
