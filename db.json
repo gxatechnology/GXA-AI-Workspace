@@ -37,6 +37,8 @@
   "careerProfiles": {},
   "resumes": {},
   "careerDocuments": {},
+  "brandKits": {},
+  "businessAssets": {},
   "config": {
     "paraphrases_limit": 10,
     "paraphrase_word_limit": 125,
@@ -80,6 +82,9 @@
       { "id": "gxa-modern", "name": "GXA Modern", "category": "Professional", "atsFriendly": true, "requiredPlan": "free", "description": "Clean typography with a restrained accent." },
       { "id": "gxa-academic", "name": "GXA Academic", "category": "Academic", "atsFriendly": false, "requiredPlan": "free", "description": "Detailed sections for research and publications." }
     ],
+    "business_daily_generation_limit": 10,
+    "business_pro_daily_generation_limit": 100,
+    "business_character_limit": 20000,
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,

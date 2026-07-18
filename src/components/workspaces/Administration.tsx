@@ -91,6 +91,9 @@ export default function Administration() {
     career_daily_ai_limit: 5,
     career_resume_limit: 3,
     career_import_size_mb: 10,
+    business_daily_generation_limit: 10,
+    business_pro_daily_generation_limit: 100,
+    business_character_limit: 20000,
     pricing_pro_monthly: "₹99",
     pricing_pro_yearly: "₹99",
     pricing_enterprise: "Custom Pricing",
@@ -363,6 +366,21 @@ export default function Administration() {
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-zinc-400 block">Translation characters per request</label>
                     <input type="number" min="1" value={config.translation_character_limit} onChange={(e) => setConfig({ ...config, translation_character_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-400 block">Business generations per day</label>
+                    <input type="number" min="0" value={config.business_daily_generation_limit} onChange={(e) => setConfig({ ...config, business_daily_generation_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-400 block">Pro Business generations per day</label>
+                    <input type="number" min="0" value={config.business_pro_daily_generation_limit} onChange={(e) => setConfig({ ...config, business_pro_daily_generation_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-400 block">Business brief characters per request</label>
+                    <input type="number" min="1" value={config.business_character_limit} onChange={(e) => setConfig({ ...config, business_character_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" />
                   </div>
 
                   <div className="space-y-1"><label className="text-[11px] font-bold text-zinc-400 block">Career AI generations per day</label><input type="number" min="0" value={config.career_daily_ai_limit} onChange={(e) => setConfig({ ...config, career_daily_ai_limit: Number(e.target.value) })} className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono" /></div>
