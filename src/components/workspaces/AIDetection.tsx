@@ -1,298 +1,32 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  Sparkles, 
-  ShieldAlert, 
-  UserCheck, 
-  Cpu, 
-  Loader2, 
-  Check, 
-  Copy, 
-  HelpCircle, 
-  AlertTriangle, 
-  Zap, 
-  Smile, 
-  ArrowRight,
-  TrendingDown,
-  Activity
-} from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, FileText, History, Loader2, Save, Search, ShieldAlert, Sparkles, Upload } from 'lucide-react';
+import { WorkspaceId } from '../../types';
 
-export default function AIDetection({ initialText = '' }: { initialText?: string }) {
-  const [inputText, setInputText] = useState<string>(
-    'In today’s fast-paced digital landscape, artificial intelligence has emerged as a critical driver of innovation. By leveraging advanced deep learning architectures and high-dimensional neural network arrays, organizations can optimize operational workflows and unlock unprecedented scaling efficiencies.'
-  );
-  const [loading, setLoading] = useState<boolean>(false);
-  const [humanizing, setHumanizing] = useState<boolean>(false);
-  const [aiScore, setAiScore] = useState<number | null>(null);
-  const [humanizedText, setHumanizedText] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'detector' | 'humanizer' | 'analysis' | 'improvement'>('detector');
+interface Segment { id: string; type: 'sentence' | 'paragraph'; startOffset: number; endOffset: number; text: string; classification: string; confidenceBand: string; estimatedAiLikelihood?: number; indicators: string[]; explanation: string }
+interface Metrics { words: number; characters: number; charactersWithoutSpaces: number; sentences: number; paragraphs: number; readingMinutes: number; speakingMinutes: number; averageWordsPerSentence: number; averageSentencesPerParagraph: number; uniqueWords: number; lexicalDiversity: number; repeatedWords: Array<{ word: string; count: number }>; questions: number; exclamations: number; readingEase?: number; gradeLevel?: number }
+interface Result { id: string; classification: string; confidenceBand: string; estimatedAiLikelihood?: number; language: string; metrics: Metrics; sentenceResults: Segment[]; paragraphResults: Segment[]; indicators: string[]; limitations: string[]; modelVersion: string; createdAt: string; minimumUsefulWords: number }
+interface Props { initialText?: string; currentUser?: any; onOpenUpgradeModal?: () => void; onSelectWorkspace?: (route: WorkspaceId) => void; setSharedText?: (text: string) => void }
+const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest ? { Authorization: `Bearer ${user.email}` } : {};
+const fileBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(file); });
 
-  useEffect(() => { setInputText(initialText); }, [initialText]);
+export default function AIDetection({ initialText = '', currentUser, onOpenUpgradeModal, onSelectWorkspace, setSharedText }: Props) {
+  const [text, setText] = useState(initialText); const [result, setResult] = useState<Result | null>(null); const [analyzedText, setAnalyzedText] = useState(''); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [language, setLanguage] = useState('Auto'); const [detail, setDetail] = useState<'sentences' | 'paragraphs'>('sentences'); const [activeSegment, setActiveSegment] = useState<string | null>(null); const [tab, setTab] = useState<'detector' | 'metrics' | 'similarity' | 'history'>('detector'); const [compareText, setCompareText] = useState(''); const [similarity, setSimilarity] = useState<any>(null); const [history, setHistory] = useState<any[]>([]); const fileRef = useRef<HTMLInputElement>(null); const editorRef = useRef<HTMLTextAreaElement>(null);
+  const authenticated = Boolean(currentUser?.email && !currentUser.guest); const stale = Boolean(result && text !== analyzedText); const words = text.trim().split(/\s+/).filter(Boolean).length; const segments = detail === 'sentences' ? result?.sentenceResults || [] : result?.paragraphResults || [];
+  useEffect(() => { if (initialText) setText(initialText); }, [initialText]);
+  useEffect(() => { if (authenticated) fetch('/api/originality/analyses', { headers: authHeaders(currentUser) }).then(response => response.ok ? response.json() : { analyses: [] }).then(body => setHistory(body.analyses || [])); }, [currentUser?.email]);
 
-  const handleDetect = async () => {
-    if (!inputText.trim() || loading) return;
-    setLoading(true);
-    try {
-      // Prompt Gemini to act as a linguistic analysis system and generate some statistics
-      const prompt = `Perform an AI writing probability analysis on the following text. 
-      Output a clean evaluation of why it feels written by AI or a Human, including typical vocabulary repetition and syntactic structures.
-      Text: "${inputText}"`;
+  const detect = async () => { if (!text.trim() || loading) return; setLoading(true); setError(''); const response = await fetch('/api/originality/detect', { method: 'POST', headers: { ...authHeaders(currentUser), 'Content-Type': 'application/json' }, body: JSON.stringify({ text, language }) }); const body = await response.json().catch(() => ({})); if (!response.ok) { setError(body.error || 'Analysis failed.'); if (body.code === 'PLAN_LIMIT') onOpenUpgradeModal?.(); } else { setResult(body.result); setAnalyzedText(text); setActiveSegment(null); } setLoading(false); };
+  const upload = async (file: File) => { setError(''); if (file.type === 'text/plain' || file.type === 'text/markdown') { setText(await file.text()); setResult(null); return; } if (file.type !== 'application/pdf') { setError('Supported analysis files are PDF, TXT and Markdown.'); return; } const response = await fetch('/api/documents/upload', { method: 'POST', headers: { ...authHeaders(currentUser), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, mimeType: file.type, data: await fileBase64(file) }) }); const body = await response.json().catch(() => ({})); if (!response.ok) setError(body.error || 'Document extraction failed.'); else { const extracted = (body.document.extractedPages || []).map((page: any) => page.text).filter(Boolean).join('\n\n'); if (!extracted) setError('No native text was extracted. OCR is not configured.'); else { setText(extracted); setResult(null); } } };
+  const save = async () => { if (!result) return; if (!authenticated) { onOpenUpgradeModal?.(); return; } const response = await fetch('/api/originality/analyses', { method: 'POST', headers: { ...authHeaders(currentUser), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: text.slice(0, 60) || 'Content analysis', tool: 'Detector', classification: result.classification, language: result.language, result, inputText: analyzedText }) }); if (!response.ok) setError('Analysis could not be saved.'); else setError(''); };
+  const compare = async () => { const response = await fetch('/api/originality/similarity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ left: text, right: compareText }) }); const body = await response.json().catch(() => ({})); if (!response.ok) setError(body.error); else setSimilarity(body.result); };
+  const exportReport = (format: 'md' | 'json') => { if (!result) return; const content = format === 'json' ? JSON.stringify(result, null, 2) : `# GXA Content Quality Report\n\nClassification: ${result.classification}\nConfidence: ${result.confidenceBand}\nLanguage: ${result.language}\nMethod: ${result.modelVersion}\n\n## Indicators\n${result.indicators.map(item => `- ${item}`).join('\n') || '- No strong indicators identified.'}\n\n## Limitations\n${result.limitations.map(item => `- ${item}`).join('\n')}`; const url = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' })); const link = document.createElement('a'); link.href = url; link.download = `gxa-content-report.${format}`; link.click(); URL.revokeObjectURL(url); };
+  const handoff = (route: WorkspaceId) => { setSharedText?.(text); onSelectWorkspace?.(route); };
+  const metricCards = useMemo(() => result ? [['Words', result.metrics.words], ['Sentences', result.metrics.sentences], ['Paragraphs', result.metrics.paragraphs], ['Reading time', `${result.metrics.readingMinutes} min`], ['Lexical diversity', `${result.metrics.lexicalDiversity}%`], ['Avg. sentence', `${result.metrics.averageWordsPerSentence} words`], ...(result.metrics.readingEase !== undefined ? [['Reading ease', result.metrics.readingEase], ['Grade level', result.metrics.gradeLevel]] : [])] : [], [result]);
 
-      const response = await generateContent({
-        prompt,
-        systemInstruction: 'You are an advanced linguistic forensics tool. Analyze the user text and describe style indicators like repetitive sentence lengths, corporate buzzwords, and high perplexity indicators.'
-      });
-
-      // Calculate a deterministic but realistic AI percentage based on common AI buzzwords
-      const buzzwords = ['landscape', 'emerged', 'leveraging', 'optimize', 'unprecedented', 'testament', 'furthermore', 'delve', 'vital', 'crucial', 'demystify', 'revolutionize', 'pioneering'];
-      let matches = 0;
-      buzzwords.forEach(word => {
-        if (inputText.toLowerCase().includes(word)) matches++;
-      });
-      
-      const score = Math.min(15 + matches * 18 + Math.floor(Math.random() * 10), 99);
-      setAiScore(score);
-      setHumanizedText(response); // Reuse this box for the analytical breakdown
-    } catch (err) {
-      setAiScore(78);
-      setHumanizedText('Forensic module timed out. Running fallback lexical probability analysis.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleHumanize = async () => {
-    if (!inputText.trim() || humanizing) return;
-    setHumanizing(true);
-    try {
-      const prompt = `Humanize this text so that it completely bypasses AI detectors. Convert formal, repetitive, robotic constructs into relaxed, authentic, high-impact storytelling with natural sentence variations. Maintain the core message.
-      Text: "${inputText}"`;
-
-      const result = await generateContent({
-        prompt,
-        systemInstruction: 'You are an elite ghostwriter. Your primary job is rewriting texts to pass linguistic analysis filters. Avoid robotic words and maintain a conversational, highly engaging human-like tone.'
-      });
-
-      setInputText(result);
-      setAiScore(Math.floor(Math.random() * 8) + 2); // Score drops to < 10% !
-      setHumanizedText('The text has been rewritten successfully. The syntactic flow was modified to replicate high perplexity and sentence variety typical of natural human expression.');
-    } catch (err) {
-      setHumanizedText('Linguistic restructuring failed. Check network parameters inside settings.');
-    } finally {
-      setHumanizing(false);
-    }
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(inputText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-12 text-left h-full">
-      {/* Menu / Settings panel */}
-      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col h-[calc(100vh-12rem)]">
-        <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2.5 mb-2 block font-mono">
-          Detection Modules
-        </span>
-        <div className="space-y-1">
-          <button
-            onClick={() => setActiveTab('detector')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'detector' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <ShieldAlert className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>AI Detector</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Detect GPT-4, Gemini patterns</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('humanizer')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'humanizer' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <UserCheck className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Smart Humanizer</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Bypass modern detectors</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <Cpu className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Probability Analysis</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Sentence perplexity breakdowns</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('improvement')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition flex items-center gap-2.5 ${
-              activeTab === 'improvement' ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:bg-zinc-900'
-            }`}
-          >
-            <Zap className="h-4 w-4" />
-            <div className="flex flex-col">
-              <span>Content Improver</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Elevate natural phrasing</span>
-            </div>
-          </button>
-        </div>
-
-        <div className="mt-auto border-t border-zinc-800/80 pt-4 px-2.5 space-y-2">
-          <span className="text-[9px] text-zinc-500 font-mono font-bold uppercase tracking-wider block">Scan Statistics</span>
-          <div className="flex justify-between items-center text-[11px] text-zinc-400">
-            <span>Daily Scan Quota</span>
-            <span className="font-mono text-white">48 / 50</span>
-          </div>
-          <div className="w-full bg-zinc-800 rounded-full h-1">
-            <div className="bg-indigo-500 h-1 rounded-full" style={{ width: '96%' }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Primary Detection Canvas */}
-      <div className="lg:col-span-9 flex flex-col gap-6 h-[calc(100vh-12rem)] min-h-0">
-        {/* Statistics Bar */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 flex flex-wrap gap-4 items-center justify-between shrink-0 shadow-lg">
-          <div className="space-y-0.5">
-            <h3 className="text-md font-bold text-white flex items-center gap-2">
-              <Activity className="h-4.5 w-4.5 text-indigo-400 animate-pulse" /> Linguistic Forensics
-            </h3>
-            <p className="text-xs text-neutral-400">Scan digital copy to determine structural probability of AI origin.</p>
-          </div>
-
-          {/* AI Score Badge */}
-          {aiScore !== null && (
-            <div className="flex items-center gap-3 bg-black/40 border border-zinc-800 px-4 py-2 rounded-lg">
-              <div className="relative h-11 w-11 flex items-center justify-center">
-                <svg className="absolute top-0 left-0 h-full w-full rotate-[-90deg]">
-                  <circle cx="22" cy="22" r="18" stroke="#27272a" strokeWidth="3" fill="none" />
-                  <circle cx="22" cy="22" r="18" 
-                    stroke={aiScore > 50 ? '#ef4444' : aiScore > 20 ? '#f59e0b' : '#10b981'} 
-                    strokeWidth="3" fill="none" 
-                    strokeDasharray={`${2 * Math.PI * 18}`}
-                    strokeDashoffset={`${2 * Math.PI * 18 * (1 - aiScore / 100)}`}
-                    className="transition-all duration-1000"
-                  />
-                </svg>
-                <span className="text-[11px] font-black text-white">{aiScore}%</span>
-              </div>
-              <div>
-                <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-wider block">AI Probability</span>
-                <span className={`text-[11px] font-extrabold ${aiScore > 50 ? 'text-red-400' : aiScore > 20 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {aiScore > 50 ? 'Likely Generative AI' : aiScore > 20 ? 'Mixed Prose' : 'Highly Authentic Human'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input and Forensic Results */}
-        <div className="flex-1 grid gap-6 md:grid-cols-2 min-h-0">
-          {/* Form Side */}
-          <div className="bg-zinc-900/20 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-between min-h-0">
-            <div className="flex-1 flex flex-col min-h-0 space-y-3">
-              <div className="flex justify-between items-center text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-                <span>Verification Terminal</span>
-                {inputText && (
-                  <button onClick={handleCopy} className="text-zinc-500 hover:text-white transition flex items-center gap-1">
-                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    Copy Text
-                  </button>
-                )}
-              </div>
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="w-full flex-1 bg-black/60 border border-zinc-800 rounded-xl p-4 text-xs text-neutral-200 focus:outline-none focus:border-indigo-500 leading-relaxed resize-none font-sans"
-                placeholder="Paste the text you want to evaluate..."
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <button
-                onClick={handleDetect}
-                disabled={loading || !inputText.trim()}
-                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-neutral-300 font-bold text-xs py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 border border-zinc-700"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="h-3.5 w-3.5" /> Run AI Detector
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={handleHumanize}
-                disabled={humanizing || !inputText.trim()}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 shadow-lg"
-              >
-                {humanizing ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Structuring...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-3.5 w-3.5 animate-bounce" /> Bypass & Humanize
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Report Side */}
-          <div className="bg-black border border-zinc-800/80 rounded-xl flex flex-col overflow-hidden min-h-0 shadow-2xl">
-            <div className="bg-zinc-900/60 px-4 py-3 border-b border-zinc-800/80 shrink-0">
-              <span className="text-xs font-mono font-bold text-neutral-400 flex items-center gap-1.5">
-                <Cpu className="h-3.5 w-3.5 text-indigo-400" /> Forensic Analysis Breakdown
-              </span>
-            </div>
-
-            <div className="flex-1 p-5 overflow-y-auto leading-relaxed text-xs text-neutral-200 text-left space-y-4">
-              {aiScore !== null ? (
-                <div className="space-y-4">
-                  <div className="flex items-start gap-2 bg-zinc-900/60 border border-zinc-800 p-3 rounded-lg">
-                    <AlertTriangle className={`h-4 w-4 shrink-0 mt-0.5 ${aiScore > 50 ? 'text-red-400' : 'text-amber-400'}`} />
-                    <div>
-                      <span className="text-[11px] font-extrabold text-white block">Perplexity & Burstitiness Evaluation</span>
-                      <p className="text-[10px] text-zinc-400 mt-0.5">The structural flow exhibits {aiScore > 50 ? 'highly repetitive sentence structures and a lack of natural cadence variations' : 'superb lexical distribution and natural phrase structures typical of experienced human authors'}.</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-zinc-900/20 border border-zinc-800 rounded-lg p-4 font-mono text-[11px] text-neutral-300 leading-relaxed whitespace-pre-wrap select-text">
-                    {humanizedText}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-3 px-4">
-                  <Activity className="h-8 w-8 text-zinc-600 animate-pulse" />
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-400">Forensics Console Standby</h4>
-                    <p className="text-[10px] text-zinc-500 mt-0.5 max-w-xs">Paste your document or blog drafts. Run detector to generate live probability scores and vocabulary audits.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="mx-auto max-w-7xl space-y-4 pb-10"><header><h1 className="text-2xl font-black sm:text-3xl">Content Authenticity & Quality</h1><p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">Estimate AI-like writing patterns, review style and compare provided sources without absolute authorship claims.</p></header><nav className="flex overflow-x-auto rounded-xl border bg-white p-1 dark:border-zinc-800 dark:bg-zinc-900" aria-label="Content quality suite">{(['detector', 'metrics', 'similarity', 'history'] as const).map(item => <button key={item} onClick={() => setTab(item)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-xs font-bold capitalize ${tab === item ? 'bg-teal-500 text-white' : 'text-slate-500'}`}>{item === 'similarity' ? 'Internal Similarity' : item}</button>)}</nav>{error && <p role={error ? 'alert' : 'status'} className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
+    {tab === 'detector' && <div className="grid gap-4 lg:grid-cols-2"><section className="flex min-h-[560px] flex-col rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-black">Text to analyze</h2><div className="flex gap-2"><input ref={fileRef} type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" className="hidden" onChange={event => event.target.files?.[0] && upload(event.target.files[0])} /><button onClick={() => fileRef.current?.click()} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold dark:border-zinc-700"><Upload className="h-3.5 w-3.5" /> Upload</button><select value={language} onChange={event => setLanguage(event.target.value)} className="rounded-lg border px-2 text-xs dark:border-zinc-700 dark:bg-zinc-950"><option>Auto</option><option>English</option><option>Hindi</option><option>Hinglish</option></select></div></div><textarea ref={editorRef} value={text} onChange={event => setText(event.target.value)} aria-label="Content to analyze" placeholder="Type or paste at least 50 words for a useful estimate…" className="mt-3 min-h-96 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none focus:border-teal-500 dark:border-zinc-700 dark:bg-zinc-950" /><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-slate-400">{words} words · {text.length.toLocaleString()} characters{stale ? ' · Results outdated' : ''}</span><button onClick={detect} disabled={!text.trim() || loading} className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-5 py-3 text-xs font-black text-white disabled:opacity-40">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}{loading ? 'Analyzing…' : stale ? 'Re-analyze' : 'Analyze'}</button></div></section><section className="min-h-[560px] rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">{!result ? <div className="flex h-full flex-col items-center justify-center text-center text-slate-400"><BarChart3 className="h-10 w-10" /><h2 className="mt-4 font-black text-slate-700 dark:text-zinc-200">No analysis yet</h2><p className="mt-2 max-w-sm text-sm">Results will include calibrated classifications, confidence, sentence details and visible limitations.</p></div> : <><div className="rounded-xl bg-slate-50 p-4 dark:bg-zinc-950"><p className="text-[10px] font-black uppercase text-slate-400">Estimated classification</p><h2 className="mt-1 text-xl font-black">{result.classification}</h2><p className="mt-1 text-sm text-slate-500">{result.confidenceBand} · {result.language}{result.estimatedAiLikelihood !== undefined ? ` · Estimated AI-like likelihood ${result.estimatedAiLikelihood}%` : ''}</p>{stale && <p className="mt-3 text-xs font-bold text-amber-700">Text changed after analysis. Highlights are hidden until re-analysis.</p>}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={save} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold dark:border-zinc-700"><Save className="h-3.5 w-3.5" /> Save</button><button onClick={() => exportReport('md')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-bold dark:border-zinc-700"><Download className="h-3.5 w-3.5" /> Markdown</button><button onClick={() => exportReport('json')} className="rounded-lg border px-3 py-2 text-xs font-bold dark:border-zinc-700">JSON</button><button onClick={() => handoff('ai-humanizer')} className="rounded-lg bg-teal-50 px-3 py-2 text-xs font-bold text-teal-700 dark:bg-teal-950/30 dark:text-teal-200">Send to Humanizer</button></div><div className="mt-5 flex gap-2"><button onClick={() => setDetail('sentences')} className={`rounded-lg px-3 py-2 text-xs font-bold ${detail === 'sentences' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 dark:bg-zinc-800'}`}>Sentences</button><button onClick={() => setDetail('paragraphs')} className={`rounded-lg px-3 py-2 text-xs font-bold ${detail === 'paragraphs' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 dark:bg-zinc-800'}`}>Paragraphs</button></div>{!stale && <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">{segments.map(segment => <button key={segment.id} onClick={() => { setActiveSegment(segment.id); editorRef.current?.focus(); editorRef.current?.setSelectionRange(segment.startOffset, segment.endOffset); }} className={`w-full rounded-xl border p-3 text-left ${activeSegment === segment.id ? 'border-teal-500' : 'border-slate-200 dark:border-zinc-700'}`}><span className="text-[10px] font-black uppercase">{segment.classification} · {segment.confidenceBand}</span><p className="mt-1 line-clamp-2 text-xs">{segment.text}</p><p className="mt-1 text-[10px] text-slate-500">{segment.explanation}</p></button>)}</div>}<div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20"><h3 className="text-xs font-black text-amber-800 dark:text-amber-200">Important limitations</h3><ul className="mt-2 space-y-1 text-xs leading-5 text-amber-800 dark:text-amber-200">{result.limitations.map(item => <li key={item}>• {item}</li>)}</ul><p className="mt-2 text-[10px] text-amber-700">Method {result.modelVersion}</p></div></>}</section></div>}
+    {tab === 'metrics' && <section className="rounded-2xl border bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><h2 className="font-black">Writing metrics</h2>{result ? <><div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{metricCards.map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-950"><span className="text-[10px] font-black uppercase text-slate-400">{label}</span><strong className="mt-1 block text-lg">{value}</strong></div>)}</div><h3 className="mt-6 text-sm font-black">Repeated words</h3>{result.metrics.repeatedWords.length ? <div className="mt-2 flex flex-wrap gap-2">{result.metrics.repeatedWords.map(item => <span key={item.word} className="rounded-full bg-slate-100 px-3 py-1 text-xs dark:bg-zinc-800">{item.word} × {item.count}</span>)}</div> : <p className="mt-2 text-xs text-slate-400">No word appears three or more times.</p>}{result.language !== 'English' && <p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">English readability formulas are not applied to Hindi or Hinglish.</p>}</> : <p className="mt-4 text-sm text-slate-400">Run an analysis to calculate metrics.</p>}</section>}
+    {tab === 'similarity' && <section className="grid gap-4 lg:grid-cols-2"><div className="rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"><h2 className="font-black">Provided-source comparison</h2><p className="mt-1 text-xs text-slate-500">This is internal text similarity, not an internet plagiarism scan.</p><textarea value={compareText} onChange={event => setCompareText(event.target.value)} placeholder="Paste the second text…" className="mt-4 min-h-72 w-full rounded-xl border p-4 text-sm dark:border-zinc-700 dark:bg-zinc-950" /><button onClick={compare} disabled={!text.trim() || !compareText.trim()} className="mt-3 rounded-xl bg-teal-500 px-4 py-2 text-xs font-black text-white disabled:opacity-40">Compare provided texts</button></div><div className="rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">{similarity ? <><p className="text-[10px] font-black uppercase text-slate-400">Estimated internal similarity</p><strong className="mt-1 block text-3xl">{similarity.estimatedSimilarity}%</strong><p className="mt-1 text-xs text-slate-500">{similarity.method}</p><div className="mt-4 flex flex-wrap gap-2">{similarity.sharedTerms.map((term: string) => <span key={term} className="rounded-full bg-slate-100 px-3 py-1 text-xs dark:bg-zinc-800">{term}</span>)}</div><p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">{similarity.limitations[0]} No external sources were searched or returned.</p></> : <p className="text-sm text-slate-400">No comparison run yet.</p>}</div></section>}
+    {tab === 'history' && <section className="rounded-2xl border bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><h2 className="font-black">Saved analyses</h2>{!authenticated ? <p className="mt-4 text-sm text-slate-500">Sign in to save and reopen analyses. No guest history is stored.</p> : history.length ? <ul className="mt-4 divide-y dark:divide-zinc-800">{history.map(item => <li key={item.id} className="flex items-center justify-between gap-3 py-3"><div><strong className="text-sm">{item.title}</strong><p className="text-xs text-slate-400">{item.tool} · {item.classification || 'Analysis'} · {new Date(item.createdAt).toLocaleDateString()}</p></div></li>)}</ul> : <p className="mt-4 text-sm text-slate-400">No saved analyses.</p>}</section>}
+  </div>;
 }
