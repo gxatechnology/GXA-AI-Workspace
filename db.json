@@ -34,6 +34,9 @@
   "glossaries": {},
   "translationMemory": {},
   "translationJobs": {},
+  "careerProfiles": {},
+  "resumes": {},
+  "careerDocuments": {},
   "config": {
     "paraphrases_limit": 10,
     "paraphrase_word_limit": 125,
@@ -69,6 +72,14 @@
       { "code": "en", "name": "English", "script": "Latin" }, { "code": "hi", "name": "Hindi", "script": "Devanagari" }, { "code": "hinglish", "name": "Hinglish", "script": "Latin" }, { "code": "ar", "name": "Arabic", "script": "Arabic" }, { "code": "fr", "name": "French", "script": "Latin" }, { "code": "de", "name": "German", "script": "Latin" }, { "code": "es", "name": "Spanish", "script": "Latin" }, { "code": "pt", "name": "Portuguese", "script": "Latin" }, { "code": "it", "name": "Italian", "script": "Latin" }, { "code": "nl", "name": "Dutch", "script": "Latin" }, { "code": "ru", "name": "Russian", "script": "Cyrillic" }, { "code": "ja", "name": "Japanese", "script": "Japanese" }, { "code": "ko", "name": "Korean", "script": "Hangul" }, { "code": "zh", "name": "Chinese", "script": "Han" }, { "code": "tr", "name": "Turkish", "script": "Latin" }, { "code": "id", "name": "Indonesian", "script": "Latin" }, { "code": "vi", "name": "Vietnamese", "script": "Latin" }, { "code": "bn", "name": "Bengali", "script": "Bengali" }, { "code": "mr", "name": "Marathi", "script": "Devanagari" }, { "code": "ta", "name": "Tamil", "script": "Tamil" }, { "code": "te", "name": "Telugu", "script": "Telugu" }, { "code": "gu", "name": "Gujarati", "script": "Gujarati" }, { "code": "pa", "name": "Punjabi", "script": "Gurmukhi" }
     ],
     "translation_modes": ["Standard", "Natural", "Formal", "Informal", "Business", "Academic", "Marketing", "Technical", "Legal", "Medical", "Conversational"],
+    "career_daily_ai_limit": 5,
+    "career_resume_limit": 3,
+    "career_import_size_mb": 10,
+    "career_templates": [
+      { "id": "gxa-ats", "name": "GXA ATS", "category": "ATS Friendly", "atsFriendly": true, "requiredPlan": "free", "description": "Single-column layout with conventional headings." },
+      { "id": "gxa-modern", "name": "GXA Modern", "category": "Professional", "atsFriendly": true, "requiredPlan": "free", "description": "Clean typography with a restrained accent." },
+      { "id": "gxa-academic", "name": "GXA Academic", "category": "Academic", "atsFriendly": false, "requiredPlan": "free", "description": "Detailed sections for research and publications." }
+    ],
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,

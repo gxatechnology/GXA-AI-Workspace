@@ -11,6 +11,8 @@ import { buildChatPrompt, CHAT_SYSTEM_INSTRUCTION, ChatAttachment, ChatConversat
 import { decodeDocument, DocumentValidationError, mergePdfs, processDocument, retrievePages, sanitizeFileName, transformPdf } from './server/document.js';
 import { analyzeDetection, buildHumanizerPrompt, internalSimilarity, OriginalityValidationError, validateHumanizerOutput, validateHumanizerRequest } from './server/originality.js';
 import { buildTranslationPrompt, reviewTranslation, TRANSLATION_LANGUAGES, TRANSLATION_MODES, TranslationValidationError, validateTranslationRequest } from './server/translation.js';
+import { analyzeAts, buildCareerPrompt, CareerValidationError, emptyCareerProfile, normalizeCareerProfile, parseResumeText, validateResume } from './server/career.js';
+import { CAREER_TOOLS, RESUME_TEMPLATES } from './shared/careerRegistry.js';
 
 dotenv.config();
 
@@ -24,7 +26,7 @@ app.use(express.json({ limit: '24mb' }));
 const DB_FILE = path.join(__dirname, 'db.json');
 
 function readDb() {
-  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, config: {}, usage: {} };
+  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, config: {}, usage: {} };
   const defaultConfig = {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
@@ -47,6 +49,10 @@ function readDb() {
     translation_character_limit: 20000,
     translation_languages: TRANSLATION_LANGUAGES,
     translation_modes: TRANSLATION_MODES,
+    career_daily_ai_limit: 5,
+    career_resume_limit: 3,
+    career_import_size_mb: 10,
+    career_templates: RESUME_TEMPLATES,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
@@ -87,7 +93,7 @@ function readDb() {
       documents: {},
       chats: {},
       analyses: {},
-      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {},
+      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {},
       config: defaultConfig,
       usage: {}
     };
@@ -97,7 +103,7 @@ function readDb() {
   try {
     db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, config: defaultConfig, usage: {} };
+    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, config: defaultConfig, usage: {} };
   }
 
   // Backfill new configuration keys without replacing admin-managed values.
@@ -115,7 +121,7 @@ function readDb() {
     db.usage = {};
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
-  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs']) if (!db[store]) db[store] = {};
+  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments']) if (!db[store]) db[store] = {};
   return db;
 }
 
@@ -878,6 +884,17 @@ app.delete('/api/translation/glossary/:id', (req, res) => { const userId = getUs
 app.get('/api/translation/memory', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access translation memory.' }); res.json({ entries: (readDb().translationMemory[userId] || []).map(({ sourceText, targetText, ...entry }: any) => entry) }); });
 app.get('/api/translation/saved', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access saved translations.' }); res.json({ translations: (readDb().translations[userId] || []).map(({ sourceText, targetText, ...item }: any) => item) }); });
 app.post('/api/translation/saved', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to save translations.' }); const db = readDb(); const projectId = typeof req.body.projectId === 'string' ? req.body.projectId : null; if (projectId && !(db.projects[userId] || []).some((project: any) => project.id === projectId)) return res.status(403).json({ error: 'Project is not available to this user.' }); const request = validateTranslationRequest(req.body, Number(db.config.translation_character_limit || 20000)); const targetText = String(req.body.targetText || '').trim(); if (!targetText) return res.status(400).json({ error: 'Translated content is required.' }); const item = { id: crypto.randomUUID(), ownerId: userId, title: String(req.body.title || 'Translation').slice(0, 100), sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, mode: request.mode, sourceText: request.text, targetText, projectId, createdAt: new Date().toISOString() }; db.translations[userId] ||= []; db.translations[userId].unshift(item); db.translationMemory[userId] ||= []; db.translationMemory[userId].unshift({ id: item.id, ownerId: userId, sourceLanguage: item.sourceLanguage, targetLanguage: item.targetLanguage, projectId, approvedAt: item.createdAt, sourceText: item.sourceText, targetText: item.targetText }); writeDb(db); res.status(201).json({ translation: { ...item, sourceText: undefined, targetText: undefined } }); });
+
+app.get('/api/career/config', (_req, res) => { const config = readDb().config; res.json({ tools: CAREER_TOOLS, templates: config.career_templates || RESUME_TEMPLATES, aiDailyLimit: config.career_daily_ai_limit, resumeLimit: config.career_resume_limit, importSizeMb: config.career_import_size_mb, supportedImports: ['application/pdf', 'text/plain', 'text/markdown'] }); });
+app.get('/api/career/profile', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access your Career Profile.' }); res.json({ profile: readDb().careerProfiles[userId] || emptyCareerProfile(userId) }); });
+app.put('/api/career/profile', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to save your Career Profile.' }); try { const db = readDb(); const existing = db.careerProfiles[userId]; const normalized = normalizeCareerProfile(req.body, userId); const profile = { ...normalized, id: existing?.id || normalized.id, createdAt: existing?.createdAt || normalized.createdAt }; db.careerProfiles[userId] = profile; writeDb(db); res.json({ profile }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
+app.get('/api/career/resumes', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access saved resumes.' }); res.json({ resumes: (readDb().resumes[userId] || []).map(({ sections, versions, ...resume }: any) => ({ ...resume, sectionCount: sections.length, versionCount: versions?.length || 0 })) }); });
+app.post('/api/career/resumes', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to save resumes.' }); try { const db = readDb(); const records = db.resumes[userId] || []; if (records.length >= Number(db.config.career_resume_limit || 3)) return res.status(403).json({ error: 'Configured resume limit reached. Your draft is preserved.', code: 'RESUME_LIMIT' }); const resume: any = { ...validateResume(req.body, userId), createdAt: new Date().toISOString(), versions: [] }; db.resumes[userId] = [resume, ...records]; writeDb(db); res.status(201).json({ resume }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
+app.put('/api/career/resumes/:id', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Unauthorized' }); try { const db = readDb(); const records = db.resumes[userId] || []; const index = records.findIndex((item: any) => item.id === req.params.id); if (index < 0) return res.status(404).json({ error: 'Resume not found.' }); if (req.body.updatedAt && req.body.updatedAt !== records[index].updatedAt) return res.status(409).json({ error: 'This resume changed elsewhere. Review the latest version before saving.', code: 'SAVE_CONFLICT', resume: records[index] }); const normalized = validateResume({ ...req.body, id: req.params.id }, userId); records[index] = { ...records[index], ...normalized, versions: records[index].versions || [] }; writeDb(db); res.json({ resume: records[index] }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
+app.post('/api/career/resumes/:id/versions', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Unauthorized' }); const db = readDb(); const resume = (db.resumes[userId] || []).find((item: any) => item.id === req.params.id); if (!resume) return res.status(404).json({ error: 'Resume not found.' }); const version = { id: crypto.randomUUID(), title: String(req.body.title || `Version ${(resume.versions?.length || 0) + 1}`).slice(0,100), templateId: resume.templateId, targetRole: resume.targetRole, sections: structuredClone(resume.sections), createdAt: new Date().toISOString() }; resume.versions ||= []; resume.versions.unshift(version); writeDb(db); res.status(201).json({ version }); });
+app.post('/api/career/import/parse', (req, res) => { try { res.json({ review: parseResumeText(req.body.text) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
+app.post('/api/career/ats', (req, res) => { try { res.json({ analysis: analyzeAts(req.body.resumeText, req.body.jobDescription) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
+app.post('/api/career/generate', async (req, res) => { try { const db = readDb(); const usageId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0,10); db.usage[usageId] ||= {}; db.usage[usageId][today] ||= {}; const used = Number(db.usage[usageId][today].career_generations || 0); const limit = Number(db.config.career_daily_ai_limit || 5); if (used >= limit) return res.status(429).json({ error: 'Daily Career Studio generation limit reached. Your facts are preserved.' }); const built = buildCareerPrompt(req.body); const response = await generateWithRetryAndFallback(built.prompt, { systemInstruction: built.systemInstruction }); db.usage[usageId][today].career_generations = used + 1; writeDb(db); res.json({ output: String(response.text || '').trim(), usage: { used: used + 1, limit } }); } catch (error: any) { const status = error instanceof CareerValidationError ? error.status : 502; res.status(status).json({ error: error instanceof CareerValidationError ? error.message : 'Career writing provider is unavailable. Your facts are preserved.' }); } });
 
 // Serve frontend
 const isProd = process.env.NODE_ENV === 'production';

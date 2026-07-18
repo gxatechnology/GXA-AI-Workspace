@@ -28,7 +28,8 @@ export type WorkspaceId =
   | 'shared'
   | 'trash'
   | 'storage'
-  | 'collections';
+  | 'collections'
+  | 'career';
 
 export interface Tool {
   id: string;

@@ -10,7 +10,8 @@ export type ToolCategory =
   | 'Templates and Workflows'
   | 'Productivity Utilities'
   | 'Team and Enterprise'
-  | 'Account and Administration';
+  | 'Account and Administration'
+  | 'Career and Professional';
 
 export interface ToolDefinition {
   id: string;
@@ -29,6 +30,7 @@ export interface ToolDefinition {
 }
 
 export const toolRegistry: ToolDefinition[] = [
+  { id: 'career', name: 'Career Studio', route: 'career', icon: 'briefcase', category: 'Career and Professional', description: 'Build resumes, review ATS guidance and prepare for interviews.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['resume', 'career', 'ats', 'cover letter', 'interview'], primary: false, more: true, isNew: true },
   { id: 'paraphraser', name: 'Paraphraser', route: 'paraphrasing', icon: 'repeat', category: 'Writing and Rewriting', description: 'Rewrite text while preserving its meaning.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['rewrite', 'rephrase', 'fluency'], primary: true, more: true },
   { id: 'grammar', name: 'Grammar Checker', route: 'grammar', icon: 'check', category: 'Originality and Writing Quality', description: 'Improve grammar, spelling, clarity and structure.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['spelling', 'punctuation', 'proofread'], primary: true, more: true },
   { id: 'chat', name: 'AI Chat', route: 'ai-chat', icon: 'chat', category: 'AI Chat and Research', description: 'Ask questions and work with an AI assistant.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['assistant', 'research', 'conversation'], primary: true, more: true },
