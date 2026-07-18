@@ -44,7 +44,7 @@ export default function WorkspaceContent(props: Props) {
     case 'home': content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />; break;
     case 'dashboard': content = <Dashboard onSelectWorkspace={onSelectWorkspace} onSelectTool={workspace => onSelectWorkspace(workspace)} sharedText={sharedText} setSharedText={setSharedText} onOpenUpgradeModal={onOpenUpgradeModal} currentUser={currentUser} />; break;
     case 'settings': content = <SettingsView />; break;
-    case 'ai-writing': content = <AIWriting currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'ai-writing': content = <AIWriting initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'grammar': content = <Grammar sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
     case 'paraphrasing': content = <Paraphrasing sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
     case 'ai-detection': content = <AIDetection initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
@@ -55,7 +55,7 @@ export default function WorkspaceContent(props: Props) {
     case 'business': content = <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
-    case 'ocr': content = <OCR currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'ocr': content = <OCR initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'documents': content = <Documents currentUser={currentUser} />; break;
     case 'prompts': content = <PromptEngineering />; break;
     case 'templates': content = <Templates />; break;
@@ -68,7 +68,7 @@ export default function WorkspaceContent(props: Props) {
     case 'trash': content = <TrashView />; break;
     case 'storage': content = <StorageView />; break;
     case 'favorites': content = <FavoritesView onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'images': content = <ImagesView />; break;
+    case 'images': content = <ImagesView initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'history': content = <HistoryView />; break;
     case 'pinned': content = <PinnedView onSelectWorkspace={onSelectWorkspace} />; break;
     case 'shared': content = <SharedView onSelectWorkspace={onSelectWorkspace} />; break;

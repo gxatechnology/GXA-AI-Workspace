@@ -47,9 +47,11 @@ import {
   CheckCircle,
   X,
   PlusCircle,
-  FileSignature
+  FileSignature,
+  Image as ImageIcon
 } from 'lucide-react';
 import { WRITER_CATEGORIES, WRITER_TEMPLATES, type WriterFieldDefinition } from '../../../shared/writerRegistry';
+import type { WorkspaceId } from '../../types';
 import { generateWriterContent, WriterApiError } from '../../utils/writer';
 import { 
   fetchSystemConfig, 
@@ -108,9 +110,12 @@ interface ProjectItem {
 interface AIWritingProps {
   currentUser?: any;
   onOpenUpgradeModal?: () => void;
+  initialText?: string;
+  onSelectWorkspace?: (id: WorkspaceId) => void;
+  setSharedText?: (text: string) => void;
 }
 
-export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWritingProps) {
+export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText = '', onSelectWorkspace, setSharedText }: AIWritingProps) {
   // ------------------------------------------
   // SYSTEM CONFIG & LIMITS STATES
   // ------------------------------------------
@@ -136,8 +141,8 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
 
   // Document Editor State
   const [editorTitle, setEditorTitle] = useState<string>('');
-  const [editorContent, setEditorContent] = useState<string>('');
-  const [editorStarted, setEditorStarted] = useState<boolean>(false);
+  const [editorContent, setEditorContent] = useState<string>(initialText);
+  const [editorStarted, setEditorStarted] = useState<boolean>(Boolean(initialText));
   const [outlineSections, setOutlineSections] = useState<string[]>([]);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
@@ -166,7 +171,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
   const [readingLevel, setReadingLevel] = useState<string>('high_school');
   const [keywordsInput, setKeywordsInput] = useState<string>('');
 
-  const [promptInput, setPromptInput] = useState<string>('');
+  const [promptInput, setPromptInput] = useState<string>(initialText);
   const [templateValues, setTemplateValues] = useState<Record<string, Record<string, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generationError, setGenerationError] = useState<string>('');
@@ -1209,6 +1214,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal }: AIWriting
                   <button onClick={() => exportDocument('txt')} className="hover:text-indigo-400 p-1 rounded" title="Export Text">TXT</button>
                   <button onClick={() => exportDocument('md')} className="hover:text-indigo-400 p-1 rounded" title="Export Markdown">MD</button>
                   <button onClick={() => exportDocument('html')} className="hover:text-indigo-400 p-1 rounded" title="Export HTML">HTML</button>
+                  {onSelectWorkspace && setSharedText && <button onClick={() => { setSharedText(editorContent); onSelectWorkspace('images'); }} className="inline-flex items-center gap-1 rounded p-1 hover:text-teal-500" title="Create a visual from this document"><ImageIcon className="h-3.5 w-3.5" />Visual</button>}
                 </div>
               )}
             </div>
