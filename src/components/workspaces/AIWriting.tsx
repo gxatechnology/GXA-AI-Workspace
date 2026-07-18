@@ -207,8 +207,8 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const requestControllerRef = useRef<AbortController | null>(null);
   const storedWriterUser = (() => { try { return JSON.parse(localStorage.getItem('gxa_user') || 'null'); } catch { return null; } })();
-  const authenticatedWriterUser = currentUser?.email && !currentUser?.guest ? currentUser : storedWriterUser?.email ? storedWriterUser : null;
-  const isWriterAuthenticated = Boolean(authenticatedWriterUser?.email);
+  const authenticatedWriterUser = currentUser?.sessionToken && !currentUser?.guest ? currentUser : storedWriterUser?.sessionToken ? storedWriterUser : null;
+  const isWriterAuthenticated = Boolean(authenticatedWriterUser?.sessionToken);
 
   // ==========================================
   // TEMPLATES DATABASE BY CATEGORIES
@@ -251,12 +251,12 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
         if (user) {
           setIsPremium(isUserPremium(user));
           setPlanType(user.plan || (isUserPremium(user) ? 'pro' : 'free'));
-          const userUsage = await fetchUsage(user.email);
+          const userUsage = await fetchUsage(user);
           setUsage(userUsage);
         } else {
           setIsPremium(false);
           setPlanType('free');
-          const guestUsage = await fetchUsage('guest');
+          const guestUsage = await fetchUsage();
           setUsage(guestUsage);
         }
       } catch (err) {
@@ -272,7 +272,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
       try {
         const user = JSON.parse(savedUser);
         const projRes = await fetch('/api/projects', {
-          headers: { 'Authorization': `Bearer ${user.email}` }
+          headers: { 'Authorization': `Bearer ${user.sessionToken}` }
         });
         if (projRes.ok) {
           const projData = await projRes.json();
@@ -683,7 +683,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
     try {
       const response = await fetch('/api/documents', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.sessionToken}` },
         body: JSON.stringify({
           name: editorTitle.trim() || activeTemplate.name,
           content: editorContent,
@@ -711,7 +711,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
     const name = window.prompt('Project name');
     if (!name?.trim()) return;
     try {
-      const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` }, body: JSON.stringify({ name: name.trim(), type: 'Writing', toolUsed: 'AI Writer Studio', previewText: editorContent.slice(0, 160) }) });
+      const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.sessionToken}` }, body: JSON.stringify({ name: name.trim(), type: 'Writing', toolUsed: 'AI Writer Studio', previewText: editorContent.slice(0, 160) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error('project failed');
       setProjects(previous => [payload.project, ...previous]);

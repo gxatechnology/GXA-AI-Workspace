@@ -54,7 +54,7 @@ const fallbackConfig: MediaConfig = {
 };
 
 const PLAN_RANK: Record<MediaPlan, number> = { free: 0, pro: 1, pro_plus: 2 };
-const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest ? { Authorization: `Bearer ${user.email}` } : {};
+const authHeaders = (user?: any): Record<string, string> => user?.sessionToken && !user.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {};
 const escapeXml = (value: string) => value.replace(/[<>&"']/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[character]!));
 
 const sectionIcon = (section: StudioTab) => {

@@ -30,7 +30,8 @@ export type WorkspaceId =
   | 'storage'
   | 'collections'
   | 'career'
-  | 'business';
+  | 'business'
+  | 'platform';
 
 export interface Tool {
   id: string;

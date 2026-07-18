@@ -42,8 +42,8 @@ const fallbackConfig: StudioConfig = {
   characterLimit: 20000,
 };
 
-const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest
-  ? { Authorization: `Bearer ${user.email}` }
+const authHeaders = (user?: any): Record<string, string> => user?.sessionToken && !user.guest
+  ? { Authorization: `Bearer ${user.sessionToken}` }
   : {};
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',

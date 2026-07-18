@@ -36,7 +36,7 @@ export async function generateWriterContent(request: WriterGenerateRequest, sign
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(user?.email ? { Authorization: `Bearer ${user.email}` } : {}),
+      ...(user?.sessionToken && !user?.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {}),
     },
     body: JSON.stringify(request),
     signal,

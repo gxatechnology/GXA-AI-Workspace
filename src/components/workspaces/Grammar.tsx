@@ -208,11 +208,11 @@ export default function Grammar({
       const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
       if (user) {
         setIsPremium(isUserPremium(user));
-        const userUsage = await fetchUsage(user.email);
+        const userUsage = await fetchUsage(user);
         setUsage(userUsage);
       } else {
         setIsPremium(false);
-        const guestUsage = await fetchUsage('guest');
+        const guestUsage = await fetchUsage();
         setUsage(guestUsage);
       }
     } catch (err) {
@@ -355,7 +355,7 @@ export default function Grammar({
         requestId: crypto.randomUUID(),
         documentVersion: version,
         goals: { audience: 'General', formality: 'Neutral', intent: 'Inform', domain: 'General' },
-      }, user?.email || 'guest', controller.signal);
+      }, user, controller.signal);
 
       setScores(parsedResult.scores);
       setReadability(parsedResult.readability);
@@ -624,7 +624,7 @@ export default function Grammar({
       return;
     }
     const response = await fetch('/api/documents', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.email}` },
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.sessionToken}` },
       body: JSON.stringify({ name: `Grammar revision - ${localText.slice(0, 30) || 'Untitled'}`, type: 'Grammar Document', content: localText, toolUsed: 'Grammar Checker', score: hasAnalysis ? scores.overall : null }),
     });
     if (!response.ok) alert('The document could not be saved. Your text remains available.');

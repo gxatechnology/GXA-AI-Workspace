@@ -6,7 +6,7 @@ interface Segment { id: string; type: 'sentence' | 'paragraph'; startOffset: num
 interface Metrics { words: number; characters: number; charactersWithoutSpaces: number; sentences: number; paragraphs: number; readingMinutes: number; speakingMinutes: number; averageWordsPerSentence: number; averageSentencesPerParagraph: number; uniqueWords: number; lexicalDiversity: number; repeatedWords: Array<{ word: string; count: number }>; questions: number; exclamations: number; readingEase?: number; gradeLevel?: number }
 interface Result { id: string; classification: string; confidenceBand: string; estimatedAiLikelihood?: number; language: string; metrics: Metrics; sentenceResults: Segment[]; paragraphResults: Segment[]; indicators: string[]; limitations: string[]; modelVersion: string; createdAt: string; minimumUsefulWords: number }
 interface Props { initialText?: string; currentUser?: any; onOpenUpgradeModal?: () => void; onSelectWorkspace?: (route: WorkspaceId) => void; setSharedText?: (text: string) => void }
-const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest ? { Authorization: `Bearer ${user.email}` } : {};
+const authHeaders = (user?: any): Record<string, string> => user?.sessionToken && !user.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {};
 const fileBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(file); });
 
 export default function AIDetection({ initialText = '', currentUser, onOpenUpgradeModal, onSelectWorkspace, setSharedText }: Props) {

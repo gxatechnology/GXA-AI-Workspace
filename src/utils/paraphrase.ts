@@ -21,10 +21,10 @@ export interface ParaphraseResponse {
   usage: { paraphrases: number };
 }
 
-export async function paraphraseContent(payload: ParaphrasePayload, userEmail: string, signal?: AbortSignal): Promise<ParaphraseResponse> {
+export async function paraphraseContent(payload: ParaphrasePayload, user: any, signal?: AbortSignal): Promise<ParaphraseResponse> {
   const response = await fetch('/api/paraphrase', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userEmail || 'guest'}` },
+    headers: { 'Content-Type': 'application/json', ...(user?.sessionToken && !user?.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {}) },
     body: JSON.stringify(payload),
     signal,
   });
