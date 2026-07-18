@@ -1,4 +1,5 @@
 import { findWriterTemplate, WRITER_LANGUAGES, WRITER_LENGTHS, WRITER_TONES, type WriterPlan } from '../shared/writerRegistry.js';
+import { resolvePlanKey } from '../shared/platformRegistry.js';
 
 const PLAN_RANK: Record<WriterPlan, number> = { free: 0, pro: 1, pro_plus: 2 };
 const PURPOSES = ['inform', 'educate', 'persuade', 'sell', 'explain', 'entertain', 'convert', 'build_trust', 'announce'];
@@ -30,8 +31,8 @@ const clean = (value: unknown, max: number) => typeof value === 'string' ? value
 export const countWriterWords = (value: string) => value.trim() ? value.trim().split(/\s+/).length : 0;
 
 export function normalizeWriterPlan(value: unknown): WriterPlan {
-  const plan = String(value || 'free').toLowerCase().replace(/\s+/g, '_');
-  if (plan === 'pro_plus' || plan === 'team' || plan === 'enterprise' || plan === 'premium') return 'pro_plus';
+  const plan = resolvePlanKey(value) || 'free';
+  if (plan === 'pro_plus' || plan === 'team' || plan === 'enterprise') return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }

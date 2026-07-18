@@ -8,6 +8,7 @@ import {
   CALENDAR_CADENCES, EMAIL_MODES, type BusinessToolDefinition,
 } from '../../../shared/businessRegistry';
 import type { WorkspaceId } from '../../types';
+import { canonicalPlanKey } from '../../utils/pricing';
 
 type StudioTab = 'home' | 'create' | 'brand' | 'calendar' | 'library';
 type AssetKind = 'asset' | 'template';
@@ -63,7 +64,7 @@ export default function BusinessStudio({
   const auth = useMemo(() => authHeaders(currentUser), [currentUser]);
   const [config, setConfig] = useState<StudioConfig>(() => ({
     ...fallbackConfig,
-    currentPlan: ['pro', 'pro plus', 'pro_plus', 'premium', 'team', 'enterprise'].includes(String(currentUser?.subscription || '').toLowerCase()) ? 'pro' : 'free',
+    currentPlan: canonicalPlanKey(currentUser?.subscription) === 'free' || !canonicalPlanKey(currentUser?.subscription) ? 'free' : 'pro',
   }));
   const [tab, setTab] = useState<StudioTab>('home');
   const [toolId, setToolId] = useState('professional-email');

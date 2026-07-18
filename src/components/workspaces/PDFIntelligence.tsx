@@ -54,7 +54,7 @@ export default function PDFIntelligence({ currentUser, onOpenUpgradeModal }: Pro
     if (!active) return; const query = action === 'summary' ? `${summaryMode}. Cover all processed pages and preserve important facts.` : action === 'translate' ? `Translate the retrieved document text into Hindi while preserving headings and meaning.` : question.trim();
     if (!query) return; setAnalysisLoading(true); setError(''); setAnswer(''); setCitations([]);
     const response = await fetch('/api/documents/analyze', { method: 'POST', headers: { ...authHeaders(currentUser), 'Content-Type': 'application/json' }, body: JSON.stringify({ documentId: active.persisted ? active.id : undefined, name: active.name, pages: active.extractedPages, action, query }) });
-    const body = await response.json().catch(() => ({})); if (!response.ok) setError(body.error || 'Analysis failed.'); else { setAnswer(body.text); setCitations(body.citations || []); } setAnalysisLoading(false);
+    const body = await response.json().catch(() => ({})); if (!response.ok) { if (body.code === 'ENTITLEMENT_REQUIRED') onOpenUpgradeModal?.(); setError(body.error || 'Analysis failed.'); } else { setAnswer(body.text); setCitations(body.citations || []); } setAnalysisLoading(false);
   };
 
   const runTool = async () => {

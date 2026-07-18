@@ -88,30 +88,14 @@
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,
-    "pricing_free": "₹0",
-    "pricing_pro": "₹99",
-    "pricing_pro_plus": "₹149",
-    "pricing_team": "Contact Sales",
-    "pricing_enterprise": "Custom Pricing",
-    "pricing_currency": "INR",
     "feature_locks": {
       "academic": true,
       "creative": true,
       "professional": true,
       "custom": true
     },
-    "coupons": [
-      {
-        "code": "GXA40",
-        "discount": "40%"
-      },
-      {
-        "code": "SAVE20",
-        "discount": "20%"
-      }
-    ],
-    "trial_days": 14,
-    "upgrade_message": "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
+    "coupons": [],
+    "trial_days": 0
   },
   "usage": {
     "tauqeerashraf250@gmail.com": {

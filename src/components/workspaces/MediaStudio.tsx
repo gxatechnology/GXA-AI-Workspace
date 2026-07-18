@@ -11,6 +11,7 @@ import {
   type MediaToolDefinition,
 } from '../../../shared/mediaRegistry';
 import type { WorkspaceId } from '../../types';
+import { canonicalPlanKey } from '../../utils/pricing';
 
 type StudioTab = 'Home' | MediaSection | 'Library' | 'Projects';
 
@@ -123,8 +124,8 @@ export default function MediaStudio({
   const fileInput = useRef<HTMLInputElement>(null);
   const [config, setConfig] = useState<MediaConfig>(() => ({
     ...fallbackConfig,
-    currentPlan: ['pro plus', 'pro_plus', 'premium', 'team', 'enterprise'].includes(String(currentUser?.subscription || '').toLowerCase())
-      ? 'pro_plus' : String(currentUser?.subscription || '').toLowerCase() === 'pro' ? 'pro' : 'free',
+    currentPlan: ['pro_plus', 'team', 'enterprise'].includes(canonicalPlanKey(currentUser?.subscription) || '')
+      ? 'pro_plus' : canonicalPlanKey(currentUser?.subscription) === 'pro' ? 'pro' : 'free',
   }));
   const [tab, setTab] = useState<StudioTab>(initialSection);
   const [toolId, setToolId] = useState(initialSection === 'OCR' ? 'ocr-printed' : 'image-generator');

@@ -4,7 +4,7 @@ import net from 'net';
 import {
   ADMIN_ROLES, API_SCOPES, AUTOMATION_ACTIONS, AUTOMATION_TRIGGERS,
   DEFAULT_FEATURE_FLAGS, EntitlementKey, ORGANIZATION_ROLES, PLAN_REGISTRY, PLATFORM_PERMISSIONS,
-  PlatformPermission, PlanId, TenantType, WEBHOOK_EVENTS, normalizePlanId,
+  PlatformPermission, PlanId, TenantType, WEBHOOK_EVENTS, normalizePlanId, resolvePlanKey,
 } from '../shared/platformRegistry.js';
 
 export class PlatformError extends Error {
@@ -43,6 +43,7 @@ const emptyStores: Record<string, any> = {
   sessions: {}, subscriptions: {}, usageEvents: [], quotaReservations: {}, auditEvents: [], securityEvents: [],
   apiKeys: {}, webhookEndpoints: {}, webhookDeliveries: {}, automations: {}, automationExecutions: {},
   featureFlags: {}, dataExports: {}, deletionRequests: {}, idempotencyRecords: {}, providerHealth: {}, jobs: {}, deadLetterJobs: {},
+  pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, contactSalesLeads: {}, billingEvents: [],
 };
 
 export function personalWorkspaceId(userId: string) { return `personal_${hashSecret(userId).slice(0, 20)}`; }
@@ -71,11 +72,17 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
     user.status ||= 'active';
     user.createdAt ||= nowIso();
     user.updatedAt ||= user.createdAt;
+    const canonicalPlan = resolvePlanKey(user.subscription);
+    if (canonicalPlan && user.subscription !== canonicalPlan) { user.subscription = canonicalPlan; changes.push(`canonical-user-plan:${user.id}`); }
+  }
+  for (const subscription of Object.values<any>(db.subscriptions || {})) {
+    const canonicalPlan = resolvePlanKey(subscription?.planId);
+    if (canonicalPlan && subscription.planId !== canonicalPlan) { subscription.planId = canonicalPlan; changes.push(`canonical-subscription-plan:${subscription.id || 'unknown'}`); }
   }
   for (const flag of DEFAULT_FEATURE_FLAGS) if (!db.featureFlags[flag.key]) db.featureFlags[flag.key] = { ...flag, target: 'global', createdAt: nowIso(), updatedAt: nowIso() };
   const previousVersion = Number(db.schemaVersion || 0);
-  if (previousVersion < 12) { db.schemaVersion = 12; changes.push(`schema:${previousVersion}->12`); }
-  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 12 };
+  if (previousVersion < 13) { db.schemaVersion = 13; changes.push(`schema:${previousVersion}->13`); }
+  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 13 };
 }
 
 export function createSession(db: any, userId: string, meta: { userAgent?: string; ipHash?: string } = {}) {
@@ -109,10 +116,17 @@ export function rolePermissions(roleId: string): PlatformPermission[] {
   return ORGANIZATION_ROLES[roleId as keyof typeof ORGANIZATION_ROLES]?.permissions || [];
 }
 
-export function resolvedPlan(db: any, tenantType: TenantType, tenantId: string, user: any): PlanId {
-  const subscription = Object.values<any>(db.subscriptions || {}).find(item => item.tenantType === tenantType && item.tenantId === tenantId && ['active', 'trialing'].includes(item.status));
-  return normalizePlanId(subscription?.planId || (tenantType === 'personal' ? user.subscription : db.organizations?.[tenantId]?.planId));
+export function resolvePlanState(db: any, tenantType: TenantType, tenantId: string, user: any) {
+  const subscriptions = Object.values<any>(db.subscriptions || {}).filter(item => item.tenantType === tenantType && item.tenantId === tenantId).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '0') - Date.parse(a.updatedAt || a.createdAt || '0'));
+  const subscription = subscriptions.find(item => ['active', 'trialing'].includes(item.status) && (!item.currentPeriodEnd || Date.parse(item.currentPeriodEnd) > Date.now()));
+  if (subscription) return { planId: normalizePlanId(subscription.planId), subscription, status: String(subscription.status) };
+  const latest = subscriptions[0] || null;
+  if (latest && ['active', 'trialing'].includes(latest.status) && latest.currentPeriodEnd && Date.parse(latest.currentPeriodEnd) <= Date.now()) return { planId: 'free' as PlanId, subscription: latest, status: 'expired' };
+  if (latest && ['canceled', 'expired', 'past_due', 'paused', 'incomplete', 'failed'].includes(latest.status)) return { planId: 'free' as PlanId, subscription: latest, status: String(latest.status) };
+  const planId = normalizePlanId(tenantType === 'personal' ? user.subscription : db.organizations?.[tenantId]?.planId);
+  return { planId, subscription: latest, status: planId === 'free' ? 'free' : 'active' };
 }
+export function resolvedPlan(db: any, tenantType: TenantType, tenantId: string, user: any): PlanId { return resolvePlanState(db, tenantType, tenantId, user).planId; }
 const resolvedFeatureFlags = (db: any) => Object.fromEntries(Object.values<any>(db.featureFlags || {}).map(flag => [flag.key, Boolean(flag.enabled)]));
 const entitlementsWithFlags = (planId: PlanId, flags: Record<string, boolean>) => PLAN_REGISTRY[planId].entitlements.filter(entitlement => {
   if (['organizations', 'team_members'].includes(entitlement) && flags['platform.organizations'] === false) return false;

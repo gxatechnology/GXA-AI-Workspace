@@ -99,7 +99,6 @@ export default function Grammar({
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const [rightPanelTab, setRightPanelTab] = useState<'suggestions' | 'analytics' | 'compare'>('suggestions');
   const [selectedLearnMore, setSelectedLearnMore] = useState<SuggestionCard | null>(null);
@@ -417,7 +416,7 @@ export default function Grammar({
     const handleKeyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setShowHistoryModal(false); setShowSettingsModal(false); setShowHelpModal(false);
-        setShowUpgradeModal(false); setSelectedLearnMore(null); setShowFixAllConfirm(false);
+        setSelectedLearnMore(null); setShowFixAllConfirm(false);
       } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault(); triggerAnalysis();
       }
@@ -1188,7 +1187,7 @@ export default function Grammar({
                     {premiumFeaturesList.map((pf, idx) => (
                       <button type="button"
                         key={idx}
-                        onClick={() => setShowUpgradeModal(true)}
+                        onClick={() => onOpenUpgradeModal?.()}
                         aria-label={`${pf.name}. Premium feature. View upgrade options.`}
                         className="w-full p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-800 rounded-xl flex justify-between items-center hover:border-amber-500/40 cursor-pointer transition"
                       >
@@ -1500,7 +1499,7 @@ export default function Grammar({
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={isPremium && adminConfig.featureFlags.realTimeChecking} disabled={!isPremium} onChange={(event) => setAdminConfig(current => ({ ...current, featureFlags: { ...current.featureFlags, realTimeChecking: event.target.checked } }))} />
                   <span>Real-time checking after a short pause</span>
-                  {!isPremium && <button type="button" onClick={() => setShowUpgradeModal(true)} className="ml-auto text-[10px] font-bold text-amber-600">Pro</button>}
+                  {!isPremium && <button type="button" onClick={() => onOpenUpgradeModal?.()} className="ml-auto text-[10px] font-bold text-amber-600">View plans</button>}
                 </label>
               </div>
 
@@ -1523,84 +1522,6 @@ export default function Grammar({
             >
               Save Configuration Settings
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: PRO PLAN UPGRADE MODAL */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl text-left animate-fade-in">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-zinc-850">
-              <h3 className="text-base font-bold text-amber-500 flex items-center gap-2">
-                <Sparkle className="h-5 w-5 animate-spin" /> Elevate to Pro Writing Assistant
-              </h3>
-              <button onClick={() => setShowUpgradeModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* Plan Comparison */}
-              <div className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-850 rounded-2xl text-xs space-y-3">
-                <span className="font-bold text-slate-500 uppercase tracking-widest block">Features Match</span>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between border-b border-slate-200/50 pb-1.5">
-                    <span className="font-medium text-slate-500">Spelling & Basic Grammar</span>
-                    <span className="font-bold text-teal-600">Free / Pro</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-200/50 pb-1.5">
-                    <span className="font-medium text-slate-500">Premium Rewrite Rules</span>
-                    <span className="font-bold text-amber-600">Pro Only</span>
-                  </div>
-                  <div className="flex justify-between border-b border-slate-200/50 pb-1.5">
-                    <span className="font-medium text-slate-500">Daily Diagnostic Audits</span>
-                    <span className="font-bold text-slate-600">10 / Unlimited</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium text-slate-500">Vocabulary Enhancer</span>
-                    <span className="font-bold text-amber-600">Pro Only</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Pricing benefits card */}
-              <div className="p-4 bg-gradient-to-br from-teal-500/10 to-purple-500/10 border border-teal-500/20 rounded-2xl text-xs space-y-4 flex flex-col justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-700 dark:text-zinc-200">Ultimate Pro Tier benefits</h4>
-                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">Unlock high-level style rewrite, multi-dialect support, and deep tone restructuring diagnostics with unlimited word capacities.</p>
-                </div>
-                
-                <div className="space-y-1">
-                  <span className="text-xs text-slate-400">Monthly Billing:</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-extrabold text-slate-800 dark:text-white">₹99</span>
-                    <span className="text-[10px] text-slate-400">/ month</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <button 
-                onClick={() => {
-                  if (onOpenUpgradeModal) onOpenUpgradeModal();
-                  setShowUpgradeModal(false);
-                }}
-                className="flex-1 bg-gradient-to-r from-teal-500 to-purple-500 text-white font-bold text-xs py-2.5 rounded-xl text-center shadow-md hover:opacity-90 transition"
-              >
-                Upgrade to Pro Plan Now
-              </button>
-              <button 
-                onClick={() => setShowUpgradeModal(false)}
-                className="px-5 py-2.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-600 dark:text-zinc-300 font-bold text-xs rounded-xl text-center transition"
-              >
-                Continue Free
-              </button>
-            </div>
           </div>
         </div>
       )}

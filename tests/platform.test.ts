@@ -20,14 +20,14 @@ function sessionContext(db: any) {
   return { token: session.token, context: resolveTenantContext(db, session.token) };
 }
 
-test('Phase 12 migration is additive, password-safe and idempotent', () => {
+test('platform migration is additive, password-safe and idempotent', () => {
   const original: any = { users: { 'owner@example.com': { id: 'owner@example.com', email: 'owner@example.com', password: 'long-enough-password' } }, projects: { untouched: [{ id: 'p1' }] } };
   const preview = applyPlatformMigration(original, { dryRun: true });
   assert.equal(original.schemaVersion, undefined);
   assert.deepEqual(original.projects.untouched, [{ id: 'p1' }]);
-  assert.equal(preview.toVersion, 12);
+  assert.equal(preview.toVersion, 13);
   const applied = applyPlatformMigration(original);
-  assert.equal(applied.db.schemaVersion, 12);
+  assert.equal(applied.db.schemaVersion, 13);
   assert.notEqual(applied.db.users['owner@example.com'].password, 'long-enough-password');
   assert.ok(applied.db.users['owner@example.com'].password.startsWith('scrypt$'));
   assert.equal(verifyPassword('long-enough-password', applied.db.users['owner@example.com'].password), true);
