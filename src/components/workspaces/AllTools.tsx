@@ -89,7 +89,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
     { id: 'doc-comparison', name: 'Document Compare', desc: 'Compare two text versions side-by-side to highlight changes.', category: 'PDF & Documents', isPro: false, workspaceId: 'documents', icon: Folder },
 
     // Translation
-    { id: 'translator-pro', name: 'Multi-lingual Translator', desc: 'Translate paragraphs between 30+ global languages.', category: 'Translation', isPro: false, workspaceId: 'translation', icon: Languages },
+    { id: 'translator-pro', name: 'Translation Studio', desc: 'Translate and review content using backend-configured languages.', category: 'Translation', isPro: false, workspaceId: 'translation', icon: Languages },
 
     // Media
     { id: 'img-gen', name: 'AI Image Generator', desc: 'Generate vivid illustrations, logos, and stock imagery.', category: 'Media', isPro: true, workspaceId: 'templates', icon: Image },

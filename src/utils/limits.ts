@@ -16,6 +16,8 @@ export interface SystemConfig {
   grammar_corrections_limit: number;
   originality_daily_limit: number;
   originality_character_limit: number;
+  translation_daily_limit: number;
+  translation_character_limit: number;
   writer_generations_limit: number;
   writer_input_word_limit: number;
   writer_output_word_limit: number;
@@ -75,6 +77,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     grammar_corrections_limit: 5,
     originality_daily_limit: 5,
     originality_character_limit: 30000,
+    translation_daily_limit: 10,
+    translation_character_limit: 20000,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
