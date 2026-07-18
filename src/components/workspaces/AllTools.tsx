@@ -79,7 +79,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
 
     // Originality
     { id: 'ai-detector', name: 'AI Detector', desc: 'Scan files or pasted text to identify potential machine generation.', category: 'Originality', isPro: false, workspaceId: 'ai-detection', icon: ShieldAlert },
-    { id: 'plagiarism-checker', name: 'Plagiarism Audit', desc: 'Cross-reference text against web databases to verify authenticity.', category: 'Originality', isPro: true, workspaceId: 'ai-detection', icon: ShieldAlert },
+    { id: 'plagiarism-checker', name: 'Internal Similarity', desc: 'Compare two provided texts without claiming an external plagiarism scan.', category: 'Originality', isPro: true, workspaceId: 'ai-detection', icon: ShieldAlert },
     { id: 'citation-gen', name: 'Citation Generator', desc: 'Create APA, MLA, and Chicago bibliography references.', category: 'Originality', isPro: false, workspaceId: 'templates', icon: Bookmark },
 
     // PDF & Documents

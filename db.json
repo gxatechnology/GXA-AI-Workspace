@@ -29,6 +29,7 @@
     "tauqeerashraf250@gmail.com": [],
     "gxatechnology@gmail.com": []
   },
+  "analyses": {},
   "config": {
     "paraphrases_limit": 10,
     "paraphrase_word_limit": 125,
@@ -56,6 +57,8 @@
       "text/markdown"
     ],
     "grammar_corrections_limit": 5,
+    "originality_daily_limit": 5,
+    "originality_character_limit": 30000,
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,
@@ -111,6 +114,15 @@
         "ocr_pages": 0,
         "grammar_corrections": 0,
         "writer_generations": 0
+      },
+      "2026-07-18": {
+        "paraphrases": 0,
+        "chats": 0,
+        "pdf_uploads": 0,
+        "ocr_pages": 0,
+        "grammar_corrections": 0,
+        "writer_generations": 0,
+        "originality_analyses": 3
       }
     }
   }

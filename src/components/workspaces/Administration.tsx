@@ -84,6 +84,8 @@ export default function Administration() {
     document_upload_size_mb: 10,
     document_page_limit: 100,
     grammar_corrections_limit: 5,
+    originality_daily_limit: 5,
+    originality_character_limit: 30000,
     pricing_pro_monthly: "₹99",
     pricing_pro_yearly: "₹99",
     pricing_enterprise: "Custom Pricing",
@@ -322,6 +324,28 @@ export default function Administration() {
                       type="number" 
                       value={config.ocr_pages_limit}
                       onChange={(e) => setConfig({ ...config, ocr_pages_limit: Number(e.target.value) })}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-400 block">Originality analyses per day</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={config.originality_daily_limit}
+                      onChange={(e) => setConfig({ ...config, originality_daily_limit: Number(e.target.value) })}
+                      className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-400 block">Originality characters per request</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={config.originality_character_limit}
+                      onChange={(e) => setConfig({ ...config, originality_character_limit: Number(e.target.value) })}
                       className="w-full bg-zinc-950 border border-zinc-850 rounded px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 font-mono"
                     />
                   </div>
