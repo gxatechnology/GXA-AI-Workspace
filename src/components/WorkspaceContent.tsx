@@ -13,6 +13,7 @@ const AIHumanizer = lazy(() => import('./workspaces/AIHumanizer'));
 const AIChat = lazy(() => import('./workspaces/AIChat'));
 const Translation = lazy(() => import('./workspaces/Translation'));
 const CareerStudio = lazy(() => import('./workspaces/CareerStudio'));
+const BusinessStudio = lazy(() => import('./workspaces/BusinessStudio'));
 const Summarizer = lazy(() => import('./workspaces/Summarizer'));
 const PDFIntelligence = lazy(() => import('./workspaces/PDFIntelligence'));
 const OCR = lazy(() => import('./workspaces/OCR'));
@@ -51,6 +52,7 @@ export default function WorkspaceContent(props: Props) {
     case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} initialText={sharedText} />; break;
     case 'translation': content = <Translation initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'career': content = <CareerStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'business': content = <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
     case 'ocr': content = <OCR currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;

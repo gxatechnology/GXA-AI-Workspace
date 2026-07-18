@@ -11,7 +11,8 @@ export const CAREER_TOOLS: CareerToolDefinition[] = [
   { id: 'library', name: 'Career Library', view: 'library', category: 'Build', description: 'Open saved resumes and versions.', guestAccess: false, requiredPlan: 'free', status: 'available' },
   { id: 'applications', name: 'Application Tracker', view: 'applications', category: 'Applications', description: 'Not available until secure persistence is configured.', guestAccess: false, requiredPlan: 'pro', status: 'unavailable' }
 ];
-export const RESUME_TEMPLATES = [
+export interface ResumeTemplateDefinition { id: string; name: string; category: string; atsFriendly: boolean; requiredPlan: 'free' | 'pro'; description: string; }
+export const RESUME_TEMPLATES: ResumeTemplateDefinition[] = [
   { id: 'gxa-ats', name: 'GXA ATS', category: 'ATS Friendly', atsFriendly: true, requiredPlan: 'free', description: 'Single-column layout with conventional headings.' },
   { id: 'gxa-modern', name: 'GXA Modern', category: 'Professional', atsFriendly: true, requiredPlan: 'free', description: 'Clean typography with a restrained accent.' },
   { id: 'gxa-academic', name: 'GXA Academic', category: 'Academic', atsFriendly: false, requiredPlan: 'free', description: 'Detailed sections for research and publications.' }

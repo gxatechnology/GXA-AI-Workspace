@@ -59,6 +59,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
     { id: 'ai-writer', name: 'AI Writer', desc: 'Generate high-quality essays, articles, and content in seconds.', category: 'Writing', isPro: false, workspaceId: 'ai-writing', icon: FileText },
     { id: 'blog-writer', name: 'Blog Writer', desc: 'Craft engaging, SEO-optimized blog posts and outlines.', category: 'Writing', isPro: true, workspaceId: 'ai-writing', icon: FileText },
     { id: 'email-writer', name: 'Email Writer', desc: 'Write high-conversion professional business emails.', category: 'Writing', isPro: false, workspaceId: 'ai-writing', icon: FileText },
+    { id: 'business-studio', name: 'Business Studio', desc: 'Create email, marketing, social, proposal and report assets.', category: 'Writing', isPro: false, workspaceId: 'business', icon: Zap },
     { id: 'resume-builder', name: 'Resume Builder', desc: 'Build structured resumes and review ATS guidance.', category: 'Writing', isPro: false, workspaceId: 'career', icon: Bookmark },
     { id: 'cover-letter', name: 'Cover Letter Writer', desc: 'Create tailored cover letters for your job applications.', category: 'Writing', isPro: false, workspaceId: 'ai-writing', icon: FileText },
     { id: 'social-media', name: 'Social Post Writer', desc: 'Draft viral captions and threads for LinkedIn, X, and Instagram.', category: 'Writing', isPro: false, workspaceId: 'ai-writing', icon: Zap },

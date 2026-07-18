@@ -13,6 +13,8 @@ import { analyzeDetection, buildHumanizerPrompt, internalSimilarity, Originality
 import { buildTranslationPrompt, reviewTranslation, TRANSLATION_LANGUAGES, TRANSLATION_MODES, TranslationValidationError, validateTranslationRequest } from './server/translation.js';
 import { analyzeAts, buildCareerPrompt, CareerValidationError, emptyCareerProfile, normalizeCareerProfile, parseResumeText, validateResume } from './server/career.js';
 import { CAREER_TOOLS, RESUME_TEMPLATES } from './shared/careerRegistry.js';
+import { assertBusinessEntitlement, buildBusinessPrompt, BusinessValidationError, normalizeBrandKit, normalizeBusinessPlan, validateBusinessRequest, validateGeneratedOutput } from './server/business.js';
+import { BUSINESS_EXPORT_FORMATS, BUSINESS_LANGUAGES, BUSINESS_TOOLS, BUSINESS_TONES, CALENDAR_CADENCES, EMAIL_MODES } from './shared/businessRegistry.js';
 
 dotenv.config();
 
@@ -26,7 +28,7 @@ app.use(express.json({ limit: '24mb' }));
 const DB_FILE = path.join(__dirname, 'db.json');
 
 function readDb() {
-  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, config: {}, usage: {} };
+  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, config: {}, usage: {} };
   const defaultConfig = {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
@@ -53,6 +55,11 @@ function readDb() {
     career_resume_limit: 3,
     career_import_size_mb: 10,
     career_templates: RESUME_TEMPLATES,
+    business_daily_generation_limit: 10,
+    business_pro_daily_generation_limit: 100,
+    business_character_limit: 20000,
+    business_tools: BUSINESS_TOOLS,
+    business_languages: BUSINESS_LANGUAGES,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
@@ -93,7 +100,7 @@ function readDb() {
       documents: {},
       chats: {},
       analyses: {},
-      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {},
+      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {},
       config: defaultConfig,
       usage: {}
     };
@@ -103,7 +110,7 @@ function readDb() {
   try {
     db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, config: defaultConfig, usage: {} };
+    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, config: defaultConfig, usage: {} };
   }
 
   // Backfill new configuration keys without replacing admin-managed values.
@@ -121,7 +128,7 @@ function readDb() {
     db.usage = {};
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
-  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments']) if (!db[store]) db[store] = {};
+  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets']) if (!db[store]) db[store] = {};
   return db;
 }
 
@@ -895,6 +902,154 @@ app.post('/api/career/resumes/:id/versions', (req, res) => { const userId = getU
 app.post('/api/career/import/parse', (req, res) => { try { res.json({ review: parseResumeText(req.body.text) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
 app.post('/api/career/ats', (req, res) => { try { res.json({ analysis: analyzeAts(req.body.resumeText, req.body.jobDescription) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
 app.post('/api/career/generate', async (req, res) => { try { const db = readDb(); const usageId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0,10); db.usage[usageId] ||= {}; db.usage[usageId][today] ||= {}; const used = Number(db.usage[usageId][today].career_generations || 0); const limit = Number(db.config.career_daily_ai_limit || 5); if (used >= limit) return res.status(429).json({ error: 'Daily Career Studio generation limit reached. Your facts are preserved.' }); const built = buildCareerPrompt(req.body); const response = await generateWithRetryAndFallback(built.prompt, { systemInstruction: built.systemInstruction }); db.usage[usageId][today].career_generations = used + 1; writeDb(db); res.json({ output: String(response.text || '').trim(), usage: { used: used + 1, limit } }); } catch (error: any) { const status = error instanceof CareerValidationError ? error.status : 502; res.status(status).json({ error: error instanceof CareerValidationError ? error.message : 'Career writing provider is unavailable. Your facts are preserved.' }); } });
+app.get('/api/business/config', (req, res) => {
+  const db = readDb();
+  const userId = getUserId(req);
+  const plan = normalizeBusinessPlan(userId ? db.users[userId]?.subscription : 'free');
+  res.json({
+    tools: Array.isArray(db.config.business_tools) ? db.config.business_tools : BUSINESS_TOOLS,
+    languages: Array.isArray(db.config.business_languages) ? db.config.business_languages : BUSINESS_LANGUAGES,
+    emailModes: EMAIL_MODES,
+    tones: BUSINESS_TONES,
+    calendarCadences: CALENDAR_CADENCES,
+    exportFormats: BUSINESS_EXPORT_FORMATS,
+    currentPlan: plan,
+    dailyLimit: Number(plan === 'pro' ? db.config.business_pro_daily_generation_limit : db.config.business_daily_generation_limit),
+    characterLimit: Number(db.config.business_character_limit),
+  });
+});
+
+app.get('/api/business/brand-kits', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to access Brand Kits.' });
+  res.json({ brandKits: readDb().brandKits[userId] || [] });
+});
+
+app.post('/api/business/brand-kits', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save Brand Kits.' });
+  try {
+    const db = readDb();
+    const kit = normalizeBrandKit(req.body, userId);
+    db.brandKits[userId] ||= [];
+    db.brandKits[userId].unshift(kit);
+    writeDb(db);
+    res.status(201).json({ brandKit: kit });
+  } catch (error: any) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.put('/api/business/brand-kits/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const db = readDb();
+    const records = db.brandKits[userId] || [];
+    const index = records.findIndex((item: any) => item.id === req.params.id);
+    if (index < 0) return res.status(404).json({ error: 'Brand Kit not found.' });
+    records[index] = normalizeBrandKit({ ...req.body, id: req.params.id, createdAt: records[index].createdAt }, userId);
+    writeDb(db);
+    res.json({ brandKit: records[index] });
+  } catch (error: any) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/business/brand-kits/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const db = readDb();
+  const records = db.brandKits[userId] || [];
+  if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Brand Kit not found.' });
+  db.brandKits[userId] = records.filter((item: any) => item.id !== req.params.id);
+  writeDb(db);
+  res.json({ success: true });
+});
+
+app.post('/api/business/generate', async (req, res) => {
+  try {
+    const db = readDb();
+    const userId = getUserId(req);
+    const usageId = userId || 'guest';
+    const plan = normalizeBusinessPlan(userId ? db.users[userId]?.subscription : 'free');
+    const tools = Array.isArray(db.config.business_tools) ? db.config.business_tools : BUSINESS_TOOLS;
+    const request = validateBusinessRequest(req.body, Number(db.config.business_character_limit || 20000), tools);
+    assertBusinessEntitlement(request.tool, plan);
+
+    const today = new Date().toISOString().slice(0, 10);
+    db.usage[usageId] ||= {};
+    db.usage[usageId][today] ||= {};
+    const used = Number(db.usage[usageId][today].business_generations || 0);
+    const limit = Number(plan === 'pro' ? db.config.business_pro_daily_generation_limit || 100 : db.config.business_daily_generation_limit || 10);
+    if (limit > 0 && used >= limit) {
+      return res.status(429).json({ error: 'Daily Business Studio limit reached. Your brief is preserved.', code: 'BUSINESS_LIMIT', usage: { used, limit } });
+    }
+
+    if (req.body.brandKitId) {
+      const kit = (db.brandKits[userId || ''] || []).find((item: any) => item.id === req.body.brandKitId);
+      if (!kit) return res.status(403).json({ error: 'Brand Kit is not available to this user.', code: 'BRAND_KIT_ACCESS' });
+      request.brandKit = kit;
+    }
+    const built = buildBusinessPrompt(request);
+    const response = await generateWithRetryAndFallback(built.prompt, { systemInstruction: built.systemInstruction });
+    const result = validateGeneratedOutput(String(response.text || ''), request.brandKit?.blockedWords || [], request.tool.platformLimit);
+    db.usage[usageId][today].business_generations = used + 1;
+    writeDb(db);
+    res.json({ result, usage: { used: used + 1, limit } });
+  } catch (error: any) {
+    const status = error instanceof BusinessValidationError ? error.status : 502;
+    res.status(status).json({
+      error: error instanceof BusinessValidationError ? error.message : 'Business generation provider is unavailable. Your brief is preserved.',
+      code: error instanceof BusinessValidationError ? error.code : 'PROVIDER_UNAVAILABLE',
+    });
+  }
+});
+
+app.get('/api/business/assets', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to access saved business assets.' });
+  res.json({ assets: readDb().businessAssets[userId] || [] });
+});
+
+app.post('/api/business/assets', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Sign in to save business assets.' });
+  const db = readDb();
+  const projectId = typeof req.body.projectId === 'string' && req.body.projectId ? req.body.projectId : null;
+  if (projectId && !(db.projects[userId] || []).some((project: any) => project.id === projectId)) {
+    return res.status(403).json({ error: 'Project is not available to this user.' });
+  }
+  const content = String(req.body.content || '').trim();
+  if (!content) return res.status(400).json({ error: 'Generated content is required.' });
+  const kind = req.body.kind === 'template' ? 'template' : 'asset';
+  const asset = {
+    id: crypto.randomUUID(),
+    ownerId: userId,
+    kind,
+    title: String(req.body.title || (kind === 'template' ? 'Business template' : 'Business asset')).slice(0, 100),
+    toolId: String(req.body.toolId || ''),
+    content: content.slice(0, 50000),
+    brief: String(req.body.brief || '').slice(0, 20000),
+    projectId,
+    createdAt: new Date().toISOString(),
+  };
+  db.businessAssets[userId] ||= [];
+  db.businessAssets[userId].unshift(asset);
+  writeDb(db);
+  res.status(201).json({ asset });
+});
+
+app.delete('/api/business/assets/:id', (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const db = readDb();
+  const records = db.businessAssets[userId] || [];
+  if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Business asset not found.' });
+  db.businessAssets[userId] = records.filter((item: any) => item.id !== req.params.id);
+  writeDb(db);
+  res.json({ success: true });
+});
 
 // Serve frontend
 const isProd = process.env.NODE_ENV === 'production';
