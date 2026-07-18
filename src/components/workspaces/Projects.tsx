@@ -43,7 +43,7 @@ export default function Projects() {
       const user = JSON.parse(savedUser);
       const res = await fetch('/api/projects', {
         headers: {
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         }
       });
       if (res.ok) {
@@ -70,7 +70,7 @@ export default function Projects() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         },
         body: JSON.stringify({
           name: 'Untitled Blank Draft',
@@ -97,7 +97,7 @@ export default function Projects() {
       const res = await fetch(`/api/projects/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         }
       });
       if (res.ok) {

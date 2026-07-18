@@ -102,7 +102,7 @@ export default function UpgradeModal({
                 >
                   Upgrade Now
                 </button>
-                <span className="text-[9px] text-slate-400 dark:text-zinc-500 block">30-day money-back guarantee. Secure Stripe payment.</span>
+                <span className="text-[9px] text-slate-400 dark:text-zinc-500 block">Razorpay checkout is available only when the payment provider is configured. Activation requires backend verification.</span>
               </div>
             </div>
 

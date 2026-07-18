@@ -228,11 +228,11 @@ export default function Paraphrasing({
       const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
       if (user) {
         setIsPremium(isUserPremium(user));
-        const userUsage = await fetchUsage(user.email);
+        const userUsage = await fetchUsage(user);
         setUsage(userUsage);
       } else {
         setIsPremium(false);
-        const guestUsage = await fetchUsage('guest');
+        const guestUsage = await fetchUsage();
         setUsage(guestUsage);
       }
     } catch (err) {
@@ -465,7 +465,7 @@ export default function Paraphrasing({
         readingLevel,
         customInstructions: activeModeId === 'custom' ? customInstructions : '',
         requestId: crypto.randomUUID(),
-      }, user?.email || 'guest', controller.signal);
+      }, user, controller.signal);
       const response = result.text;
       setMissingFrozenTerms(result.missingFrozenTerms || []);
 
@@ -639,7 +639,7 @@ export default function Paraphrasing({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         },
         body: JSON.stringify({
           name: docName,

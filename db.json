@@ -5,7 +5,7 @@
       "username": "tauqeer",
       "name": "Tauqeer Ashraf",
       "email": "tauqeerashraf250@gmail.com",
-      "password": "password123",
+      "password": "scrypt$94ff35456f4fea9b123002b99fa7fa34$9eac5517e3d7cd74b6b3e22a7f6682232ac5e8b14342494d2d8c5eef90623ad68a68b46ca0e38ef85746bfde555f858fcf45bf18bc9c1f464c736adf3ebd758b",
       "subscription": "free",
       "role": "User"
     },
@@ -14,7 +14,7 @@
       "username": "gxatechnology",
       "name": "GXA Tech",
       "email": "gxatechnology@gmail.com",
-      "password": "tauqeer007",
+      "password": "scrypt$ed180ffc48f6b8ad015187c0f905e9fe$d053c0d318b6a24354a55977cb9d8dbc74d64407d690efb75d749f0e7a4dadf8450879a9e146d0b40c87ef78221f2546e4610b46a53ea5ed89b835baef699a88",
       "subscription": "free",
       "role": "User"
     }

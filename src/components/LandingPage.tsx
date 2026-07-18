@@ -47,7 +47,7 @@ export default function LandingPage({ onLoginSuccess, theme, onToggleTheme, init
       if (!res.ok) throw new Error(data.error || 'Login failed');
       onLoginSuccess(data.user);
     } catch (err: any) {
-      setError(err.message || 'Incorrect email or password. Use tauqeerashraf250@gmail.com with password123 to log in.');
+      setError(err.message || 'Incorrect email or password.');
     } finally {
       setLoading(false);
     }
@@ -75,13 +75,7 @@ export default function LandingPage({ onLoginSuccess, theme, onToggleTheme, init
   };
 
   const handleEnterAsGuest = () => {
-    onLoginSuccess({
-      id: 'guest',
-      name: 'Guest User',
-      email: 'guest@gxa-workspace.local',
-      subscription: 'free',
-      guest: true
-    });
+    onLoginSuccess({ id: 'guest', guest: true });
   };
 
   return (
@@ -214,11 +208,6 @@ export default function LandingPage({ onLoginSuccess, theme, onToggleTheme, init
             </button>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-zinc-800/60 pt-4 text-[10px] text-slate-400 dark:text-zinc-500 leading-normal text-center space-y-1.5">
-            <p>💡 <strong>Default Sandbox Login credentials:</strong></p>
-            <p>Email: <span className="font-mono text-[9px] bg-slate-100 dark:bg-zinc-950 px-1 rounded select-all">tauqeerashraf250@gmail.com</span></p>
-            <p>Password: <span className="font-mono text-[9px] bg-slate-100 dark:bg-zinc-950 px-1 rounded select-all">password123</span></p>
-          </div>
         </div>
       </main>
 

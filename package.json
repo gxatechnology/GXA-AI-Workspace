@@ -6,11 +6,16 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "migration:status": "tsx scripts/platform-migration.ts status",
+    "migration:dry-run": "tsx scripts/platform-migration.ts dry-run",
+    "migration:apply": "tsx scripts/platform-migration.ts apply",
+    "security:check": "npm audit --omit=dev"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

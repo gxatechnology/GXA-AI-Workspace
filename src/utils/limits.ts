@@ -100,12 +100,14 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
   };
 }
 
-export async function fetchUsage(userEmail: string): Promise<UsageStats> {
+import { authHeaders, storedUser } from './auth';
+
+const resolveUser = (user: any) => typeof user === 'object' && user ? user : storedUser();
+
+export async function fetchUsage(user?: any): Promise<UsageStats> {
   try {
     const res = await fetch('/api/usage', {
-      headers: {
-        'Authorization': `Bearer ${userEmail}`
-      }
+      headers: authHeaders(resolveUser(user))
     });
     if (res.ok) {
       const data = await res.json();
@@ -124,14 +126,11 @@ export async function fetchUsage(userEmail: string): Promise<UsageStats> {
   };
 }
 
-export async function incrementUsage(userEmail: string, type: keyof UsageStats, count = 1): Promise<UsageStats> {
+export async function incrementUsage(user: any, type: keyof UsageStats, count = 1): Promise<UsageStats> {
   try {
     const res = await fetch('/api/usage/increment', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userEmail}`
-      },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(resolveUser(user)) },
       body: JSON.stringify({ type, count })
     });
     if (res.ok) {

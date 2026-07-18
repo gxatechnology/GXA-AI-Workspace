@@ -13,7 +13,7 @@ const suggestions = ['Write something', 'Brainstorm ideas', 'Summarize content',
 const acceptedTypes = ['text/plain', 'text/markdown', 'text/csv', 'application/json'];
 const now = () => new Date().toISOString();
 const temporaryConversation = (): Conversation => ({ id: `temporary-${crypto.randomUUID()}`, title: 'Temporary Chat', messages: [], pinned: false, createdAt: now(), updatedAt: now() });
-const authHeaders = (user?: any): Record<string, string> => user?.email ? { Authorization: `Bearer ${user.email}` } : {};
+const authHeaders = (user?: any): Record<string, string> => user?.sessionToken && !user?.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {};
 
 function CodeBlock({ value, language }: { value: string; language?: string }) {
   const [copied, setCopied] = useState(false);
@@ -85,7 +85,7 @@ export default function AIChat({ currentUser, onOpenUpgradeModal, onSelectWorksp
     try { const response = await fetch('/api/chats', { headers: authHeaders(currentUser) }); if (!response.ok) throw new Error(); const data = await response.json(); setConversations(data.chats || []); } catch { setError('Conversation history is unavailable. You can continue in a temporary chat.'); }
   };
 
-  useEffect(() => { Promise.all([fetchSystemConfig(), fetchUsage(currentUser?.email || 'guest')]).then(([nextConfig, nextUsage]) => { setConfig(nextConfig); setUsage(nextUsage); }); loadHistory(); }, [currentUser?.email]);
+  useEffect(() => { Promise.all([fetchSystemConfig(), fetchUsage(currentUser)]).then(([nextConfig, nextUsage]) => { setConfig(nextConfig); setUsage(nextUsage); }); loadHistory(); }, [currentUser?.sessionToken]);
   useEffect(() => { sessionStorage.setItem('gxa_chat_draft', draft); }, [draft]);
   useEffect(() => { if (!loading) return; const element = scrollRef.current; if (element && element.scrollHeight - element.scrollTop - element.clientHeight < 180) bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [active.messages, loading]);
 

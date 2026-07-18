@@ -5,9 +5,9 @@ interface DocumentItem { id: string; name: string; type: string; mimeType?: stri
 
 export default function Documents({ currentUser }: { currentUser?: any }) {
   const [documents, setDocuments] = useState<DocumentItem[]>([]); const [search, setSearch] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const headers: Record<string, string> = currentUser?.email ? { Authorization: `Bearer ${currentUser.email}` } : {};
+  const headers: Record<string, string> = currentUser?.sessionToken ? { Authorization: `Bearer ${currentUser.sessionToken}` } : {};
   const load = async () => { setLoading(true); try { const response = await fetch('/api/documents', { headers }); if (!response.ok) throw new Error('Document library is unavailable.'); const body = await response.json(); setDocuments(body.documents || []); } catch (cause: any) { setError(cause.message); } finally { setLoading(false); } };
-  useEffect(() => { load(); }, [currentUser?.email]);
+  useEffect(() => { load(); }, [currentUser?.sessionToken]);
   const filtered = useMemo(() => documents.filter(document => document.name.toLowerCase().includes(search.toLowerCase())), [documents, search]);
   const remove = async (id: string) => { const response = await fetch(`/api/documents/${id}`, { method: 'DELETE', headers }); if (!response.ok) { setError('Document could not be deleted.'); return; } setDocuments(items => items.filter(item => item.id !== id)); setConfirmDelete(null); };
   const download = async (item: DocumentItem) => { const response = await fetch(`/api/documents/${item.id}/download`, { headers }); if (!response.ok) { setError('Original file is unavailable.'); return; } const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = item.name; link.click(); URL.revokeObjectURL(url); };

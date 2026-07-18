@@ -38,7 +38,7 @@ export default function Templates() {
         { key: 'client', label: 'Client Organization', placeholder: 'e.g. Google Cloud Operations' },
         { key: 'problem', label: 'Business Problem', placeholder: 'e.g. API credential leaks and slow devops pipelines' },
         { key: 'solution', label: 'Proposed Solution', placeholder: 'e.g. Deploy GXA AI Workspace local-first servers' },
-        { key: 'budget', label: 'Budget Outline', placeholder: 'e.g. $14,200.00 annual subscription plus setup support' }
+        { key: 'budget', label: 'Budget Outline', placeholder: 'e.g. INR 14,200 annual subscription plus setup support' }
       ],
       systemInstruction: 'You are an elite enterprise B2B sales strategist. Draft a formal business proposal matching the client details. Structure with headings: Executive Summary, Problem Definition, Proposed Solution, and Financial Model.'
     },
@@ -61,7 +61,7 @@ export default function Templates() {
       desc: 'Formal corporate letters with standardized letterheads.',
       fields: [
         { key: 'sender', label: 'Sender details', placeholder: 'e.g. John Doe, COO of GXA Technologies' },
-        { key: 'recipient', label: 'Recipient details', placeholder: 'e.g. Jane Smith, Director of Security at CloudCorp' },
+        { key: 'recipient', label: 'Recipient details', placeholder: 'e.g. Recipient name, role and organization' },
         { key: 'subject', label: 'Subject Line', placeholder: 'e.g. Formalizing Service Level Agreement exemption parameters' },
         { key: 'points', label: 'Core Message Details', placeholder: 'We are requesting an audit extension regarding the port 3000 mapping layers.' }
       ],

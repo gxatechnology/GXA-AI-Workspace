@@ -4,9 +4,9 @@ export interface GrammarCheckPayload {
   goals: { audience: string; formality: string; intent: string; domain: string };
 }
 
-export async function checkGrammar(payload: GrammarCheckPayload, userEmail: string, signal?: AbortSignal) {
+export async function checkGrammar(payload: GrammarCheckPayload, user: any, signal?: AbortSignal) {
   const response = await fetch('/api/grammar/check', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userEmail || 'guest'}` },
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(user?.sessionToken && !user?.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {}) },
     body: JSON.stringify(payload), signal,
   });
   const data = await response.json().catch(() => ({}));

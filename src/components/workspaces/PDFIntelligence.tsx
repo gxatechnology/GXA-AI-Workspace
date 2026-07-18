@@ -8,12 +8,12 @@ interface Citation { documentName: string; page: number; excerpt: string }
 interface Props { currentUser?: any; onOpenUpgradeModal?: () => void }
 
 const accepted = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
-const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest ? { Authorization: `Bearer ${user.email}` } : {};
+const authHeaders = (user?: any): Record<string, string> => user?.sessionToken && !user.guest ? { Authorization: `Bearer ${user.sessionToken}` } : {};
 const toBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(file); });
 const downloadBase64 = (data: string, name: string, mimeType: string) => { const bytes = Uint8Array.from(atob(data), character => character.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: mimeType })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url); };
 
 export default function PDFIntelligence({ currentUser, onOpenUpgradeModal }: Props) {
-  const authenticated = Boolean(currentUser?.email && !currentUser.guest);
+  const authenticated = Boolean(currentUser?.sessionToken && !currentUser.guest);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [activeId, setActiveId] = useState('');
   const [tab, setTab] = useState<'viewer' | 'summary' | 'chat' | 'extract' | 'tools'>('viewer');
@@ -28,7 +28,7 @@ export default function PDFIntelligence({ currentUser, onOpenUpgradeModal }: Pro
   const active = documents.find(document => document.id === activeId);
   const maxMb = config?.document_upload_size_mb || 10; const maxPages = config?.document_page_limit || 100; const uploadLimit = isUserPremium(currentUser) ? Infinity : config?.pdf_uploads_limit || 3; const remaining = uploadLimit === Infinity ? Infinity : Math.max(0, uploadLimit - (usage?.pdf_uploads || 0));
 
-  useEffect(() => { Promise.all([fetchSystemConfig(), fetchUsage(currentUser?.email || 'guest')]).then(([nextConfig, nextUsage]) => { setConfig(nextConfig); setUsage(nextUsage); }); if (authenticated) fetch('/api/documents', { headers: authHeaders(currentUser) }).then(response => response.ok ? response.json() : { documents: [] }).then(data => setDocuments((data.documents || []).map((document: any) => ({ ...document, extractedPages: [], persisted: true, data: '' })))); }, [currentUser?.email]);
+  useEffect(() => { Promise.all([fetchSystemConfig(), fetchUsage(currentUser)]).then(([nextConfig, nextUsage]) => { setConfig(nextConfig); setUsage(nextUsage); }); if (authenticated) fetch('/api/documents', { headers: authHeaders(currentUser) }).then(response => response.ok ? response.json() : { documents: [] }).then(data => setDocuments((data.documents || []).map((document: any) => ({ ...document, extractedPages: [], persisted: true, data: '' })))); }, [currentUser?.sessionToken]);
   useEffect(() => () => documents.forEach(document => document.objectUrl && URL.revokeObjectURL(document.objectUrl)), []);
 
   const uploadOne = async (file: File, activate = true): Promise<DocumentRecord> => {

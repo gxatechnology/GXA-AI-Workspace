@@ -208,7 +208,7 @@ export default function Dashboard({
       
       // Projects
       const projRes = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${user.email}` }
+        headers: { 'Authorization': `Bearer ${user.sessionToken}` }
       });
       if (projRes.ok) {
         const data = await projRes.json();
@@ -217,7 +217,7 @@ export default function Dashboard({
 
       // Documents
       const docRes = await fetch('/api/documents', {
-        headers: { 'Authorization': `Bearer ${user.email}` }
+        headers: { 'Authorization': `Bearer ${user.sessionToken}` }
       });
       if (docRes.ok) {
         const data = await docRes.json();
@@ -290,7 +290,7 @@ export default function Dashboard({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         },
         body: JSON.stringify({
           name: customName,
@@ -322,7 +322,7 @@ export default function Dashboard({
       const res = await fetch(`/api/projects/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user.email}`
+          'Authorization': `Bearer ${user.sessionToken}`
         }
       });
       if (res.ok) {
