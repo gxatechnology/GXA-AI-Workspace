@@ -128,10 +128,6 @@ export default function Paraphrasing({
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [exportOpen, setExportOpen] = useState<boolean>(false);
   const [helpOpen, setHelpOpen] = useState<boolean>(false);
-  // Legacy admin overlay remains unreachable; plan configuration is managed only through protected /admin.
-  const [adminOpen, setAdminOpen] = useState<boolean>(false);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState<boolean>(false);
-  const [activeUpgradeModeName, setActiveUpgradeModeName] = useState<string>('');
 
   // Synonym slider: 1 (Lowest), 2 (Balanced), 3 (Highest)
   const [synonymLevel, setSynonymLevel] = useState<number>(2);
@@ -170,12 +166,6 @@ export default function Paraphrasing({
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [isPremium, setIsPremium] = useState<boolean>(false);
 
-  // ADMIN Settings (Defaults overrides)
-  const [adminMaxWords, setAdminMaxWords] = useState<number>(125);
-  const [adminFreeLimit, setAdminFreeLimit] = useState<number>(10);
-  const [adminPremiumLimit, setAdminPremiumLimit] = useState<number>(9999);
-  const [adminPremiumModesAllowed, setAdminPremiumModesAllowed] = useState<boolean>(false);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 2. LIFECYCLE & STORAGE METRICS
@@ -186,21 +176,6 @@ export default function Paraphrasing({
       const savedHistory = localStorage.getItem('gxa_paraphrase_history');
       if (savedHistory && user && !user.guest && user.role !== 'Guest') {
         setHistoryList(JSON.parse(savedHistory));
-      }
-
-      const savedAdminWords = localStorage.getItem('gxa_admin_max_words');
-      if (savedAdminWords) {
-        setAdminMaxWords(Number(savedAdminWords));
-      }
-
-      const savedAdminFreeLimit = localStorage.getItem('gxa_admin_free_limit');
-      if (savedAdminFreeLimit) {
-        setAdminFreeLimit(Number(savedAdminFreeLimit));
-      }
-
-      const savedAdminPremiumModes = localStorage.getItem('gxa_admin_premium_modes');
-      if (savedAdminPremiumModes) {
-        setAdminPremiumModesAllowed(savedAdminPremiumModes === 'true');
       }
 
       // Sync background analytics schema
@@ -279,7 +254,6 @@ export default function Paraphrasing({
         setSettingsOpen(false);
         setExportOpen(false);
         setHelpOpen(false);
-        setUpgradeModalOpen(false);
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -395,16 +369,15 @@ export default function Paraphrasing({
     ? `${readingTimeSec}s read` 
     : `${Math.floor(readingTimeSec / 60)}m ${readingTimeSec % 60}s read`;
 
-  // Free Word Limits Calculation
-  // Premium has unlimited words. If admin overrides limit, standardise it.
-  const wordLimit = isPremium ? adminPremiumLimit : (config?.paraphrase_word_limit ?? 125);
-  const isCloseToLimit = !isPremium && wordsCount >= (wordLimit * 0.9) && wordsCount <= wordLimit;
-  const isExceededLimit = !isPremium && wordsCount > wordLimit;
+  // Limits remain server-configured for every plan; the UI never promises unlimited use.
+  const wordLimit = config?.paraphrase_word_limit ?? 125;
+  const isCloseToLimit = wordsCount >= (wordLimit * 0.9) && wordsCount <= wordLimit;
+  const isExceededLimit = wordsCount > wordLimit;
 
   // Daily Quota controls
-  const dailyLimit = isPremium ? Infinity : (config?.paraphrases_limit ?? 10);
-  const remainingUses = isPremium ? Infinity : Math.max(0, dailyLimit - (usage?.paraphrases || 0));
-  const isDailyExceeded = !isPremium && remainingUses <= 0;
+  const dailyLimit = config?.paraphrases_limit ?? 10;
+  const remainingUses = Math.max(0, dailyLimit - (usage?.paraphrases || 0));
+  const isDailyExceeded = remainingUses <= 0;
 
   // Unlock check for modes
   const isModePremium = (modeId: string) => {
@@ -414,8 +387,7 @@ export default function Paraphrasing({
 
   const handleModeSelection = (mode: ParaphraseMode) => {
     if (isModePremium(mode.id) && !isPremium) {
-      setActiveUpgradeModeName(mode.name);
-      setUpgradeModalOpen(true);
+      onOpenUpgradeModal?.();
     } else {
       setActiveModeId(mode.id);
       setErrorState(null);
@@ -435,7 +407,7 @@ export default function Paraphrasing({
     if (isDailyExceeded) {
       setErrorState({
         type: 'quota',
-        msg: `Daily rephrasing quota of ${dailyLimit} reached. Upgrade to Pro for unlimited requests.`
+        msg: `Daily rephrasing quota of ${dailyLimit} reached. Choose an eligible plan to review configured limits.`
       });
       return;
     }
@@ -913,7 +885,7 @@ export default function Paraphrasing({
                 <span>{readingTimeText}</span>
                 <span>•</span>
                 <span className={`px-1.5 py-0.5 rounded ${isExceededLimit ? 'bg-rose-500/10 text-rose-500 font-black' : isCloseToLimit ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-50 dark:bg-zinc-950'}`}>
-                  {wordsCount} / {wordLimit === Infinity ? 'Unlimited' : `${wordLimit} words`}
+                  {wordsCount} / {wordLimit} words
                 </span>
               </div>
             </div>
@@ -1763,290 +1735,6 @@ export default function Paraphrasing({
         </div>
       )}
 
-
-      {/* DRAWER 5: HIGH-FIDELITY SaaS ADMINISTRATIVE OVERLAYS */}
-      {adminOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-850 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-y-auto">
-            
-            <button onClick={() => setAdminOpen(false)} className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 dark:hover:text-white">
-              <X className="h-4.5 w-4.5" />
-            </button>
-
-            <div className="space-y-5">
-              <div className="flex items-center gap-2">
-                <Wrench className="h-5 w-5 text-amber-500" />
-                <h3 className="text-base font-black text-slate-900 dark:text-white">Workspace Admin Controls</h3>
-              </div>
-              <p className="text-xs text-slate-400">
-                Calibrate system-wide quotas, maximum limits, and lock-out configurations of the Paraphraser sandbox in real-time.
-              </p>
-
-              <div className="space-y-4 pt-2">
-                {/* Max words configuration */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-600 dark:text-zinc-400" htmlFor="admin-max-words-input">Free Word Limit Per Request</label>
-                  <input 
-                    id="admin-max-words-input"
-                    type="number"
-                    value={adminMaxWords}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setAdminMaxWords(val);
-                      localStorage.setItem('gxa_admin_max_words', String(val));
-                    }}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-400">Standard limit is 125 words. Changes apply immediately in the left panel limit state indicators.</span>
-                </div>
-
-                {/* Free quota limit per day */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-600 dark:text-zinc-400" htmlFor="admin-free-limit-input">Standard Daily Quota (Requests)</label>
-                  <input 
-                    id="admin-free-limit-input"
-                    type="number"
-                    value={adminFreeLimit}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setAdminFreeLimit(val);
-                      localStorage.setItem('gxa_admin_free_limit', String(val));
-                    }}
-                    className="w-full bg-slate-50 dark:bg-zinc-950 border rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-slate-400">Standard limit is 10. Once reached, free users see a warning overlay block.</span>
-                </div>
-
-                {/* Unlock all premium modes toggle */}
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200/50 dark:border-zinc-850 rounded-2xl">
-                  <div className="flex flex-col text-left">
-                    <span className="text-xs font-black">Enable Premium Modes for Free Tier</span>
-                    <span className="text-[10px] text-slate-400">Toggle whether non-paying guests can access Formal, SEO, Creative models.</span>
-                  </div>
-                  <input 
-                    type="checkbox"
-                    checked={adminPremiumModesAllowed}
-                    onChange={(e) => {
-                      const val = e.target.checked;
-                      setAdminPremiumModesAllowed(val);
-                      localStorage.setItem('gxa_admin_premium_modes', String(val));
-                    }}
-                    className="h-4.5 w-4.5 text-teal-500 focus:ring-0 rounded"
-                    aria-label="Unlock premium modes toggle"
-                  />
-                </div>
-
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
-                <button 
-                  onClick={() => setAdminOpen(false)}
-                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition"
-                >
-                  Save System Layout
-                </button>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      )}
-
-
-      {/* SECTION E: HIGH-FIDELITY BEAUTIFUL UPGRADE MODAL */}
-      {upgradeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm text-left">
-          <div className="relative bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl overflow-hidden text-slate-800 dark:text-zinc-100 max-h-[90vh] overflow-y-auto">
-            
-            {/* Glow design vectors */}
-            <div className="absolute -top-32 -right-32 h-64 w-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-32 -left-32 h-64 w-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-
-            {/* Close Button */}
-            <button 
-              onClick={() => setUpgradeModalOpen(false)}
-              className="absolute top-5 right-5 p-1.5 rounded-full bg-slate-50 hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-400 hover:text-slate-600 dark:hover:text-white transition duration-150"
-            >
-              <X className="h-4.5 w-4.5" />
-            </button>
-
-            <div className="space-y-6">
-              
-              {/* Header section */}
-              <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-500/10 px-3 py-1 text-[10px] font-black text-teal-600 dark:text-teal-400 border border-teal-500/20 tracking-wider uppercase">
-                  <Sparkles className="h-3 w-3" /> Unlock Premium AI Models
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-slate-900 dark:text-white">
-                  Upgrade Workspace Seat to Access {activeUpgradeModeName || 'Elite'} Mode
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
-                  Join thousands of copywriters, academic researchers, and technical writers executing document flows with high precision.
-                </p>
-              </div>
-
-              {/* 5-Plan SaaS Suite Selector Grid */}
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-5 pt-2">
-                
-                {/* Plan 1: Free */}
-                <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-slate-50/50 dark:bg-zinc-950/20 flex flex-col justify-between text-left">
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Free Plan</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">₹0</h4>
-                    <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1">✓ {config?.paraphrase_word_limit ?? 125} word cap</li>
-                      <li className="flex items-center gap-1">✓ Standard Mode</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => setUpgradeModalOpen(false)}
-                    className="w-full mt-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Current
-                  </button>
-                </div>
-
-                {/* Plan 2: Pro (Featured) */}
-                <div className="p-3 border-2 border-teal-500 rounded-2xl bg-teal-500/5 dark:bg-teal-950/10 flex flex-col justify-between text-left relative">
-                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-teal-500 text-white text-[7px] font-black rounded uppercase tracking-wider">Popular</span>
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-teal-600 dark:text-teal-400 tracking-wider">Pro</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">₹99<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
-                    <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1 text-teal-600 font-bold">✓ Unlimited words</li>
-                      <li className="flex items-center gap-1">✓ 12 Elite Modes</li>
-                      <li className="flex items-center gap-1">✓ Fast AI node</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    }}
-                    className="w-full mt-4 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Upgrade
-                  </button>
-                </div>
-
-                {/* Plan 3: Pro Plus */}
-                <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 flex flex-col justify-between text-left">
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Pro Plus</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">₹149<span className="text-[9px] font-medium text-slate-400">/mo</span></h4>
-                    <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1">✓ Unlimited speed</li>
-                      <li className="flex items-center gap-1">✓ Custom API key</li>
-                      <li className="flex items-center gap-1">✓ Higher limits</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    }}
-                    className="w-full mt-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-850 text-slate-700 dark:text-zinc-300 rounded-lg text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Upgrade
-                  </button>
-                </div>
-
-                {/* Plan 4: Team */}
-                <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 flex flex-col justify-between text-left">
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Team</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">Contact Sales</h4>
-                    <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1">✓ 5 Seats included</li>
-                      <li className="flex items-center gap-1">✓ Shared folders</li>
-                      <li className="flex items-center gap-1">✓ Central billing</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    }}
-                    className="w-full mt-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-850 text-slate-700 dark:text-zinc-300 rounded-lg text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Upgrade
-                  </button>
-                </div>
-
-                {/* Plan 5: Enterprise */}
-                <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 flex flex-col justify-between text-left">
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Enterprise</span>
-                    <h4 className="text-sm font-black text-slate-800 dark:text-white mt-1">Custom</h4>
-                    <ul className="text-[9px] text-slate-500 space-y-1 mt-2.5">
-                      <li className="flex items-center gap-1">✓ SSO Auth log</li>
-                      <li className="flex items-center gap-1">✓ Dedicated AI vpc</li>
-                      <li className="flex items-center gap-1">✓ 24/7 Support SLA</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    }}
-                    className="w-full mt-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-850 text-slate-700 dark:text-zinc-300 rounded-lg text-[9px] font-black uppercase tracking-wider"
-                  >
-                    Contact Sales
-                  </button>
-                </div>
-
-              </div>
-
-              {/* Show benefits unlocked */}
-              <div className="p-4 bg-slate-50 dark:bg-zinc-950 rounded-2xl border border-slate-200/50 dark:border-zinc-850 text-xs">
-                <h5 className="font-black text-slate-800 dark:text-zinc-200 flex items-center gap-1.5 mb-2">
-                  <ShieldCheck className="h-4 w-4 text-emerald-500" /> Unlocked Premium Features:
-                </h5>
-                <div className="grid gap-2 sm:grid-cols-2 text-slate-500">
-                  <div className="flex items-center gap-1.5">• Access to Formal, SEO, Academic & Creative modes</div>
-                  <div className="flex items-center gap-1.5">• Unlock unlimited words rephrasing capacity</div>
-                  <div className="flex items-center gap-1.5">• Higher precision with maximal Synonym Slider level</div>
-                  <div className="flex items-center gap-1.5">• Dedicated premium server prioritisation</div>
-                </div>
-              </div>
-
-              {/* Navigation buttons */}
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-3 border-t border-slate-100 dark:border-zinc-800">
-                <button 
-                  onClick={() => setUpgradeModalOpen(false)}
-                  className="text-xs text-slate-400 hover:text-slate-600 font-bold"
-                >
-                  Continue with Free
-                </button>
-                
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      alert('Displaying complete enterprise billing plans and configurations.');
-                    }}
-                    className="px-4 py-2 text-xs font-bold bg-slate-50 hover:bg-slate-100 dark:bg-zinc-850 rounded-xl transition"
-                  >
-                    Compare Plans
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setUpgradeModalOpen(false);
-                      if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    }}
-                    className="px-5 py-2 text-xs font-black bg-teal-500 hover:bg-teal-600 text-white rounded-xl shadow-xs transition"
-                  >
-                    Upgrade Now
-                  </button>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );

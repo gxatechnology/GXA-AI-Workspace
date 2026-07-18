@@ -21,23 +21,12 @@ export interface SystemConfig {
   writer_generations_limit: number;
   writer_input_word_limit: number;
   writer_output_word_limit: number;
-  pricing_free: string;
-  pricing_pro: string;
-  pricing_pro_plus: string;
-  pricing_team: string;
-  pricing_enterprise: string;
-  pricing_currency: string;
-  pricing_pro_monthly?: string;
-  pricing_pro_yearly?: string;
   feature_locks: {
     academic: boolean;
     creative: boolean;
     professional: boolean;
     custom: boolean;
   };
-  coupons: Array<{ code: string; discount: string }>;
-  trial_days: number;
-  upgrade_message: string;
 }
 
 export interface UsageStats {
@@ -82,25 +71,17 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
-    pricing_free: "₹0",
-    pricing_pro: "₹99",
-    pricing_pro_plus: "₹149",
-    pricing_team: "Contact Sales",
-    pricing_enterprise: "Custom Pricing",
-    pricing_currency: "INR",
     feature_locks: {
       academic: true,
       creative: true,
       professional: true,
       custom: true
     },
-    coupons: [{ code: "GXA40", discount: "40%" }],
-    trial_days: 14,
-    upgrade_message: "Join thousands of technical writers, marketers, and SaaS teams executing with GXA Technologies."
   };
 }
 
 import { authHeaders, storedUser } from './auth';
+import { canonicalPlanKey } from './pricing';
 
 const resolveUser = (user: any) => typeof user === 'object' && user ? user : storedUser();
 
@@ -152,6 +133,6 @@ export async function incrementUsage(user: any, type: keyof UsageStats, count = 
 
 export function isUserPremium(user: any): boolean {
   if (!user) return false;
-  const sub = String(user.subscription || '').toLowerCase();
-  return ['pro', 'pro plus', 'pro_plus', 'premium', 'team', 'enterprise'].includes(sub);
+  const planKey = canonicalPlanKey(user.subscription);
+  return Boolean(planKey && planKey !== 'free');
 }

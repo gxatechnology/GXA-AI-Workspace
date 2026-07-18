@@ -7,6 +7,7 @@ import {
   type BusinessPlan,
   type BusinessToolDefinition,
 } from '../shared/businessRegistry.js';
+import { resolvePlanKey } from '../shared/platformRegistry.js';
 
 export class BusinessValidationError extends Error {
   constructor(message: string, public status = 400, public code = 'INVALID_BUSINESS_REQUEST') {
@@ -20,7 +21,7 @@ const cleanList = (value: unknown, maxItems = 50) => Array.isArray(value)
   : [];
 
 export function normalizeBusinessPlan(value: unknown): BusinessPlan {
-  return ['pro', 'pro plus', 'pro_plus', 'premium', 'team', 'enterprise'].includes(String(value || '').toLowerCase()) ? 'pro' : 'free';
+  return (resolvePlanKey(value) || 'free') === 'free' ? 'free' : 'pro';
 }
 
 export function assertBusinessEntitlement(tool: BusinessToolDefinition, plan: BusinessPlan) {

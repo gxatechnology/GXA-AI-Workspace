@@ -130,7 +130,6 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'sidebar' | 'editor' | 'assistant'>('editor');
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
 
   // Active Category & Tool Selection
   const [activeCategory, setActiveCategory] = useState<string>('general-writing');
@@ -424,7 +423,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
   const runAiGeneration = async (mode: 'generate' | 'continue' | 'improve' | 'expand' | 'shorten' | 'rewrite' | 'inline' | 'outline' | 'section' = 'generate', customPrompt = '') => {
     if (loading) return;
     if (!isPremium && activeTemplate.requiredPlan && activeTemplate.requiredPlan !== 'free') {
-      setShowUpgradeModal(true);
+      onOpenUpgradeModal?.();
       return;
     }
     const values = templateValues[activeTemplateId] || {};
@@ -488,7 +487,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
         setGenerationError('Generation stopped. Your existing draft is preserved.');
       } else if (error instanceof WriterApiError) {
         if (error.field) setFieldErrors({ [error.field]: error.message });
-        if (error.status === 403 || error.code === 'REQUEST_LIMIT' || error.code === 'WORD_LIMIT') setShowUpgradeModal(true);
+        if (error.status === 403 || error.code === 'REQUEST_LIMIT' || error.code === 'WORD_LIMIT') onOpenUpgradeModal?.();
         setGenerationError(error.message);
       } else {
         setGenerationError('The writing service is unavailable. Your form and draft are preserved. Try again.');
@@ -501,7 +500,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
 
   const handleSelectTemplate = (template: TemplateItem) => {
     if (!isPremium && template.requiredPlan && template.requiredPlan !== 'free') {
-      setShowUpgradeModal(true);
+      onOpenUpgradeModal?.();
       return;
     }
     setActiveTemplateId(template.id);
@@ -764,7 +763,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
                 <span className="block font-bold">Input limit: <strong className="text-indigo-600 dark:text-indigo-400">{config.writer_input_word_limit || 1500} words</strong></span>
               </div>
               <button 
-                onClick={() => setShowUpgradeModal(true)}
+                onClick={() => onOpenUpgradeModal?.()}
                 className="bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black py-1 px-2.5 rounded-lg transition"
               >
                 Upgrade Plan
@@ -1681,83 +1680,6 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
                 Save rules
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          PORTAL DIALOG: UPGRADE EXPERIENCE PLATFORM
-          ========================================== */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl max-w-2xl w-full shadow-2xl p-8 relative overflow-hidden flex flex-col md:flex-row gap-6">
-            
-            {/* Background absolute decor */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
-
-            <button 
-              onClick={() => setShowUpgradeModal(false)}
-              className="absolute top-4 right-4 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-slate-600 transition"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            {/* Left promo segment */}
-            <div className="flex-1 space-y-4">
-              <div className="flex items-center gap-1 bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-lg w-max tracking-widest font-mono">
-                <Sparkles className="h-3 w-3" /> Unlock Professional Writes
-              </div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white leading-tight">Create premium content without word boundaries.</h2>
-              <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
-                Draft research publications, academic reviews, corporate SLAs, and newsletters on the fly utilizing specialized local caches and Gemini 3.5 precision engines.
-              </p>
-
-              <div className="space-y-2 text-xs font-semibold">
-                <div className="flex items-center gap-2 text-slate-700 dark:text-zinc-300">
-                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span>Unlimited drafts and /slash command allocations</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-700 dark:text-zinc-300">
-                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span>Long-form chapters and automated PDF uploads</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-700 dark:text-zinc-300">
-                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span>Advanced Pro Plus creativity tuning levels</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right pricing segment */}
-            <div className="w-full md:w-64 bg-slate-50 dark:bg-zinc-950 p-6 rounded-2xl border border-slate-200/40 dark:border-zinc-850 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Pro Subscription Plan</span>
-                <div className="flex items-baseline gap-1 mt-2">
-                  <span className="text-3xl font-black text-slate-900 dark:text-white">₹149</span>
-                  <span className="text-xs text-slate-400 font-bold">/ month</span>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">Save 40% utilizing promo GXA40 at final checkout portal.</p>
-              </div>
-
-              <div className="space-y-2 mt-6">
-                <button 
-                  onClick={() => {
-                    if (onOpenUpgradeModal) onOpenUpgradeModal();
-                    setShowUpgradeModal(false);
-                  }}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-3 rounded-xl transition shadow-md shadow-indigo-600/10 text-center block"
-                >
-                  Upgrade to Pro Plus
-                </button>
-                <button 
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="w-full text-center py-2 text-[10px] text-slate-400 font-bold hover:text-slate-600"
-                >
-                  Continue Free Version limits
-                </button>
-              </div>
-            </div>
-
           </div>
         </div>
       )}

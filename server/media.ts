@@ -7,6 +7,7 @@ import {
   type MediaPlan,
   type MediaToolDefinition,
 } from '../shared/mediaRegistry.js';
+import { resolvePlanKey } from '../shared/platformRegistry.js';
 
 export class MediaValidationError extends Error {
   constructor(message: string, public status = 400, public code = 'INVALID_MEDIA_REQUEST') {
@@ -24,8 +25,8 @@ const clean = (value: unknown, max = 4000) => typeof value === 'string' ? value.
 const PLAN_RANK: Record<MediaPlan, number> = { free: 0, pro: 1, pro_plus: 2 };
 
 export function normalizeMediaPlan(value: unknown): MediaPlan {
-  const plan = String(value || '').trim().toLowerCase().replace(/[ -]+/g, '_');
-  if (['pro_plus', 'premium', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
+  const plan = resolvePlanKey(value) || 'free';
+  if (['pro_plus', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }

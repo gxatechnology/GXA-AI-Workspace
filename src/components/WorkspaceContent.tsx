@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { WorkspaceId } from '../types';
+import { PublicPlan, UpgradeRequest } from '../types/pricing';
 import UniversalHome from './workspaces/UniversalHome';
 
 const Dashboard = lazy(() => import('./workspaces/Dashboard'));
@@ -31,41 +32,42 @@ const PinnedView = lazy(() => import('./workspaces/Pinned'));
 const CollectionsView = lazy(() => import('./workspaces/Collections'));
 const EnterprisePlatform = lazy(() => import('./workspaces/EnterprisePlatform'));
 
-interface Props { activeWorkspace: WorkspaceId; onSelectWorkspace: (id: WorkspaceId) => void; onOpenUpgradeModal: () => void; onOpenTools: () => void; onRequireAuth: (mode: 'login' | 'register', returnTo: WorkspaceId) => void; sharedText: string; setSharedText: (text: string) => void; currentUser?: any; isAuthenticated: boolean }
+interface Props { activeWorkspace: WorkspaceId; onSelectWorkspace: (id: WorkspaceId) => void; onOpenUpgradeModal: (request?: Partial<UpgradeRequest>) => void; onPlanSelected: (plan: PublicPlan, sourceTool: string, returnRoute: string) => Promise<void>; onOpenTools: () => void; onRequireAuth: (mode: 'login' | 'register', returnTo: WorkspaceId) => void; sharedText: string; setSharedText: (text: string) => void; currentUser?: any; isAuthenticated: boolean }
 
 export default function WorkspaceContent(props: Props) {
-  const { activeWorkspace, onSelectWorkspace, onOpenUpgradeModal, onOpenTools, onRequireAuth, sharedText, setSharedText, currentUser, isAuthenticated } = props;
+  const { activeWorkspace, onSelectWorkspace, onOpenUpgradeModal, onPlanSelected, onOpenTools, onRequireAuth, sharedText, setSharedText, currentUser, isAuthenticated } = props;
+  const upgrade = (featureKey: string, featureName: string, sourceTool = activeWorkspace) => () => onOpenUpgradeModal({ featureKey, featureName, sourceTool, returnRoute: activeWorkspace });
   let content: React.ReactNode;
   switch (activeWorkspace) {
     case 'home': content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />; break;
-    case 'dashboard': content = <Dashboard onSelectWorkspace={onSelectWorkspace} onSelectTool={workspace => onSelectWorkspace(workspace)} sharedText={sharedText} setSharedText={setSharedText} onOpenUpgradeModal={onOpenUpgradeModal} currentUser={currentUser} />; break;
+    case 'dashboard': content = <Dashboard onSelectWorkspace={onSelectWorkspace} onSelectTool={workspace => onSelectWorkspace(workspace)} sharedText={sharedText} setSharedText={setSharedText} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium workspace features', 'dashboard')} currentUser={currentUser} />; break;
     case 'settings': content = <EnterprisePlatform currentUser={currentUser} initialSection="security" onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'ai-writing': content = <AIWriting initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'grammar': content = <Grammar sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
-    case 'paraphrasing': content = <Paraphrasing sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
-    case 'ai-detection': content = <AIDetection initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'ai-humanizer': content = <AIHumanizer initialText={sharedText} currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} initialText={sharedText} />; break;
-    case 'translation': content = <Translation initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'career': content = <CareerStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'business': content = <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'ai-writing': content = <AIWriting initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium writing templates', 'ai-writing')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'grammar': content = <Grammar sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('grammar.advanced', 'advanced grammar suggestions', 'grammar')} />; break;
+    case 'paraphrasing': content = <Paraphrasing sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('paraphraser.premium_modes', 'premium paraphrasing modes', 'paraphrasing')} />; break;
+    case 'ai-detection': content = <AIDetection initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('originality.advanced', 'advanced originality tools', 'ai-detection')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'ai-humanizer': content = <AIHumanizer initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('humanizer.standard', 'AI Humanizer', 'ai-humanizer')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={upgrade('chat.premium_models', 'premium chat capabilities', 'ai-chat')} onSelectWorkspace={onSelectWorkspace} initialText={sharedText} />; break;
+    case 'translation': content = <Translation initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('exports.advanced', 'advanced translation exports', 'translation')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'career': content = <CareerStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('career.basic', 'saved career documents', 'career')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'business': content = <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('business.premium', 'premium business tools', 'business')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
-    case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
-    case 'ocr': content = <OCR initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'pdf-intelligence')} />; break;
+    case 'ocr': content = <OCR initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'ocr')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'documents': content = <Documents currentUser={currentUser} />; break;
     case 'prompts': content = <PromptEngineering />; break;
     case 'templates': content = <Templates />; break;
     case 'collaboration': content = <EnterprisePlatform currentUser={currentUser} initialSection="members" onSelectWorkspace={onSelectWorkspace} />; break;
     case 'billing': content = <EnterprisePlatform currentUser={currentUser} initialSection="billing" onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'pricing': content = <Pricing currentUser={currentUser} onRequireAuth={onRequireAuth} onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'pricing': content = <Pricing currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} onPlanSelected={onPlanSelected} />; break;
     case 'administration': content = <EnterprisePlatform currentUser={currentUser} initialSection="admin" onSelectWorkspace={onSelectWorkspace} />; break;
     case 'platform': content = <EnterprisePlatform currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'all-tools': content = <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
+    case 'all-tools': content = <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium tools', 'all-tools')} />; break;
     case 'projects': content = <Projects />; break;
     case 'trash': content = <TrashView />; break;
     case 'storage': content = <StorageView />; break;
     case 'favorites': content = <FavoritesView />; break;
-    case 'images': content = <ImagesView initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'images': content = <ImagesView initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('media.premium', 'premium media tools', 'images')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'history': content = <HistoryView />; break;
     case 'pinned': content = <PinnedView />; break;
     case 'shared': content = <EnterprisePlatform currentUser={currentUser} initialSection="members" onSelectWorkspace={onSelectWorkspace} />; break;
