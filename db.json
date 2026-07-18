@@ -30,6 +30,10 @@
     "gxatechnology@gmail.com": []
   },
   "analyses": {},
+  "translations": {},
+  "glossaries": {},
+  "translationMemory": {},
+  "translationJobs": {},
   "config": {
     "paraphrases_limit": 10,
     "paraphrase_word_limit": 125,
@@ -59,6 +63,12 @@
     "grammar_corrections_limit": 5,
     "originality_daily_limit": 5,
     "originality_character_limit": 30000,
+    "translation_daily_limit": 10,
+    "translation_character_limit": 20000,
+    "translation_languages": [
+      { "code": "en", "name": "English", "script": "Latin" }, { "code": "hi", "name": "Hindi", "script": "Devanagari" }, { "code": "hinglish", "name": "Hinglish", "script": "Latin" }, { "code": "ar", "name": "Arabic", "script": "Arabic" }, { "code": "fr", "name": "French", "script": "Latin" }, { "code": "de", "name": "German", "script": "Latin" }, { "code": "es", "name": "Spanish", "script": "Latin" }, { "code": "pt", "name": "Portuguese", "script": "Latin" }, { "code": "it", "name": "Italian", "script": "Latin" }, { "code": "nl", "name": "Dutch", "script": "Latin" }, { "code": "ru", "name": "Russian", "script": "Cyrillic" }, { "code": "ja", "name": "Japanese", "script": "Japanese" }, { "code": "ko", "name": "Korean", "script": "Hangul" }, { "code": "zh", "name": "Chinese", "script": "Han" }, { "code": "tr", "name": "Turkish", "script": "Latin" }, { "code": "id", "name": "Indonesian", "script": "Latin" }, { "code": "vi", "name": "Vietnamese", "script": "Latin" }, { "code": "bn", "name": "Bengali", "script": "Bengali" }, { "code": "mr", "name": "Marathi", "script": "Devanagari" }, { "code": "ta", "name": "Tamil", "script": "Tamil" }, { "code": "te", "name": "Telugu", "script": "Telugu" }, { "code": "gu", "name": "Gujarati", "script": "Gujarati" }, { "code": "pa", "name": "Punjabi", "script": "Gurmukhi" }
+    ],
+    "translation_modes": ["Standard", "Natural", "Formal", "Informal", "Business", "Academic", "Marketing", "Technical", "Legal", "Medical", "Conversational"],
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,

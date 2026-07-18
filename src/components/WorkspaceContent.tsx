@@ -48,7 +48,7 @@ export default function WorkspaceContent(props: Props) {
     case 'ai-detection': content = <AIDetection initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'ai-humanizer': content = <AIHumanizer initialText={sharedText} currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} initialText={sharedText} />; break;
-    case 'translation': content = <Translation initialText={sharedText} />; break;
+    case 'translation': content = <Translation initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;
     case 'ocr': content = <OCR currentUser={currentUser} onOpenUpgradeModal={onOpenUpgradeModal} />; break;

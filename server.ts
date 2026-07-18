@@ -10,6 +10,7 @@ import { buildWriterPrompt, countWriterWords, normalizeWriterOutput, normalizeWr
 import { buildChatPrompt, CHAT_SYSTEM_INSTRUCTION, ChatAttachment, ChatConversationRecord, ChatMessageRecord, ChatValidationError, makeConversation, titleFromMessage, validateChatAttachments, validateChatMessage } from './server/chat.js';
 import { decodeDocument, DocumentValidationError, mergePdfs, processDocument, retrievePages, sanitizeFileName, transformPdf } from './server/document.js';
 import { analyzeDetection, buildHumanizerPrompt, internalSimilarity, OriginalityValidationError, validateHumanizerOutput, validateHumanizerRequest } from './server/originality.js';
+import { buildTranslationPrompt, reviewTranslation, TRANSLATION_LANGUAGES, TRANSLATION_MODES, TranslationValidationError, validateTranslationRequest } from './server/translation.js';
 
 dotenv.config();
 
@@ -23,7 +24,7 @@ app.use(express.json({ limit: '24mb' }));
 const DB_FILE = path.join(__dirname, 'db.json');
 
 function readDb() {
-  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, config: {}, usage: {} };
+  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, config: {}, usage: {} };
   const defaultConfig = {
     paraphrases_limit: 10,
     paraphrase_word_limit: 125,
@@ -42,6 +43,10 @@ function readDb() {
     grammar_corrections_limit: 5,
     originality_daily_limit: 5,
     originality_character_limit: 30000,
+    translation_daily_limit: 10,
+    translation_character_limit: 20000,
+    translation_languages: TRANSLATION_LANGUAGES,
+    translation_modes: TRANSLATION_MODES,
     writer_generations_limit: 5,
     writer_input_word_limit: 1500,
     writer_output_word_limit: 1200,
@@ -82,6 +87,7 @@ function readDb() {
       documents: {},
       chats: {},
       analyses: {},
+      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {},
       config: defaultConfig,
       usage: {}
     };
@@ -91,7 +97,7 @@ function readDb() {
   try {
     db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (err) {
-    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, config: defaultConfig, usage: {} };
+    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, config: defaultConfig, usage: {} };
   }
 
   // Backfill new configuration keys without replacing admin-managed values.
@@ -109,6 +115,7 @@ function readDb() {
     db.usage = {};
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
+  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs']) if (!db[store]) db[store] = {};
   return db;
 }
 
@@ -857,6 +864,20 @@ app.post('/api/chat/stream', async (req, res) => {
     res.end();
   }
 });
+
+app.get('/api/translation/config', (_req, res) => { const config = readDb().config; res.json({ languages: config.translation_languages, modes: config.translation_modes, characterLimit: config.translation_character_limit, dailyLimit: config.translation_daily_limit }); });
+app.post('/api/translation/translate', async (req, res) => {
+  try {
+    const db = readDb(); const userId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0, 10); db.usage[userId] ||= {}; db.usage[userId][today] ||= {}; const used = Number(db.usage[userId][today].translations || 0); const limit = Number(db.config.translation_daily_limit || 10); if (used >= limit) return res.status(429).json({ error: 'Daily translation limit reached. Your source text is preserved.', code: 'TRANSLATION_LIMIT' });
+    const request = validateTranslationRequest(req.body, Number(db.config.translation_character_limit || 20000)); const built = buildTranslationPrompt(request); const response = await generateWithRetryAndFallback(built.prompt, { systemInstruction: built.systemInstruction }); const output = String(response.text || '').trim(); if (!output) throw new TranslationValidationError('The translation provider returned no content.', 502, 'EMPTY_TRANSLATION'); db.usage[userId][today].translations = used + 1; writeDb(db); res.json({ translation: output, sourceLanguage: request.sourceLanguage, detection: request.detection, review: reviewTranslation(request.text, output, request.preserve), usage: { used: used + 1, limit } });
+  } catch (error: any) { const status = error instanceof TranslationValidationError ? error.status : /429|rate limit/i.test(error?.message || '') ? 429 : 502; res.status(status).json({ error: error instanceof TranslationValidationError ? error.message : 'Translation provider is unavailable. Your source text is preserved.', code: error?.code || 'TRANSLATION_PROVIDER_ERROR' }); }
+});
+app.get('/api/translation/glossary', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access your glossary.' }); res.json({ entries: readDb().glossaries[userId] || [] }); });
+app.post('/api/translation/glossary', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to manage your glossary.' }); const source = String(req.body.source || '').trim().slice(0, 100); const target = String(req.body.target || '').trim().slice(0, 100); if (!source || !target) return res.status(400).json({ error: 'Source and approved translation are required.' }); const db = readDb(); const entry = { id: crypto.randomUUID(), ownerId: userId, source, target, projectId: req.body.projectId || null, createdAt: new Date().toISOString() }; db.glossaries[userId] ||= []; db.glossaries[userId].push(entry); writeDb(db); res.status(201).json({ entry }); });
+app.delete('/api/translation/glossary/:id', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Unauthorized' }); const db = readDb(); const entries = db.glossaries[userId] || []; if (!entries.some((entry: any) => entry.id === req.params.id)) return res.status(404).json({ error: 'Glossary entry not found.' }); db.glossaries[userId] = entries.filter((entry: any) => entry.id !== req.params.id); writeDb(db); res.json({ success: true }); });
+app.get('/api/translation/memory', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access translation memory.' }); res.json({ entries: (readDb().translationMemory[userId] || []).map(({ sourceText, targetText, ...entry }: any) => entry) }); });
+app.get('/api/translation/saved', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access saved translations.' }); res.json({ translations: (readDb().translations[userId] || []).map(({ sourceText, targetText, ...item }: any) => item) }); });
+app.post('/api/translation/saved', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to save translations.' }); const db = readDb(); const projectId = typeof req.body.projectId === 'string' ? req.body.projectId : null; if (projectId && !(db.projects[userId] || []).some((project: any) => project.id === projectId)) return res.status(403).json({ error: 'Project is not available to this user.' }); const request = validateTranslationRequest(req.body, Number(db.config.translation_character_limit || 20000)); const targetText = String(req.body.targetText || '').trim(); if (!targetText) return res.status(400).json({ error: 'Translated content is required.' }); const item = { id: crypto.randomUUID(), ownerId: userId, title: String(req.body.title || 'Translation').slice(0, 100), sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, mode: request.mode, sourceText: request.text, targetText, projectId, createdAt: new Date().toISOString() }; db.translations[userId] ||= []; db.translations[userId].unshift(item); db.translationMemory[userId] ||= []; db.translationMemory[userId].unshift({ id: item.id, ownerId: userId, sourceLanguage: item.sourceLanguage, targetLanguage: item.targetLanguage, projectId, approvedAt: item.createdAt, sourceText: item.sourceText, targetText: item.targetText }); writeDb(db); res.status(201).json({ translation: { ...item, sourceText: undefined, targetText: undefined } }); });
 
 // Serve frontend
 const isProd = process.env.NODE_ENV === 'production';

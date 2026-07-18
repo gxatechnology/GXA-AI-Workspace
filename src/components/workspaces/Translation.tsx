@@ -1,257 +1,34 @@
-import React, { useState } from 'react';
-import { 
-  Globe2, 
-  ArrowLeftRight, 
-  ChevronRight, 
-  Loader2, 
-  Copy, 
-  Check, 
-  Smile, 
-  FileText, 
-  Languages, 
-  Upload, 
-  ArrowRight,
-  Info
-} from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, ArrowLeftRight, Check, ClipboardCheck, Copy, Download, FileText, Languages, Loader2, Plus, Save, Trash2, Upload } from 'lucide-react';
+import type { WorkspaceId } from '../../types';
 
-export default function Translation({ initialText = '' }: { initialText?: string }) {
-  const [inputText, setInputText] = useState<string>(initialText);
-  const [translatedText, setTranslatedText] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [detectedLanguage, setDetectedLanguage] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
-  const [sourceLang, setSourceLang] = useState<string>('auto');
-  const [targetLang, setTargetLang] = useState<string>('es');
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [fileName, setFileName] = useState<string>('');
-
-  const [languages] = useState([
-    { code: 'en', name: 'English' },
-    { code: 'es', name: 'Spanish (Español)' },
-    { code: 'fr', name: 'French (Français)' },
-    { code: 'de', name: 'German (Deutsch)' },
-    { code: 'it', name: 'Italian (Italiano)' },
-    { code: 'pt', name: 'Portuguese (Português)' },
-    { code: 'ja', name: 'Japanese (日本語)' },
-    { code: 'zh', name: 'Chinese (中文)' },
-    { code: 'ko', name: 'Korean (한국어)' },
-    { code: 'ru', name: 'Russian (Русский)' },
-    { code: 'ar', name: 'Arabic (العربية)' }
-  ]);
-
-  const handleTranslate = async () => {
-    if (!inputText.trim() || loading) return;
-    setLoading(true);
-    setTranslatedText('');
-    try {
-      const targetLangName = languages.find(l => l.code === targetLang)?.name || targetLang;
-      const sourceInstruction = sourceLang === 'auto' 
-        ? 'Detect the source language first.' 
-        : `The source language is ${languages.find(l => l.code === sourceLang)?.name}.`;
-
-      const prompt = `Translate the following text into ${targetLangName}. 
-      ${sourceInstruction}
-      Provide ONLY the direct translation output without any conversational preamble or notes.
-      Text: "${inputText}"`;
-
-      const response = await generateContent({
-        prompt,
-        systemInstruction: 'You are an elite, localization-grade translation system. Preserve tone, formatting, and technical accuracy.'
-      });
-
-      setTranslatedText(response);
-
-      if (sourceLang === 'auto') {
-        // Simple mock detection or basic regex matching
-        setDetectedLanguage('English (Detected)');
-      } else {
-        setDetectedLanguage('');
-      }
-    } catch (err) {
-      setTranslatedText('Translation pipeline failed. Verify settings and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(translatedText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    setUploadProgress(0);
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev === null || prev >= 100) {
-          clearInterval(interval);
-          setInputText(`[Document Content Loaded from "${file.name}"]\nThis is a placeholder for the extracted document text. Now choose a target language and execute translate!`);
-          return 100;
-        }
-        return prev + 25;
-      });
-    }, 150);
-  };
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-12 text-left h-full">
-      {/* Settings / Controls Column */}
-      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col gap-5 h-[calc(100vh-12rem)]">
-        <div>
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-1 block font-mono">
-            Translation Configuration
-          </span>
-          <p className="text-[10px] text-zinc-500 px-1 mt-1">Configure live localization layers</p>
-        </div>
-
-        {/* Source Language Select */}
-        <div className="space-y-1.5 text-left">
-          <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Source Language</label>
-          <select 
-            value={sourceLang}
-            onChange={(e) => setSourceLang(e.target.value)}
-            className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="auto">✨ Auto Detect Language</option>
-            {languages.map(l => (
-              <option key={l.code} value={l.code}>{l.name}</option>
-            ))}
-          </select>
-          {detectedLanguage && (
-            <span className="text-[10px] text-indigo-400 font-mono font-bold block mt-1">
-              🔍 {detectedLanguage}
-            </span>
-          )}
-        </div>
-
-        {/* Target Language Select */}
-        <div className="space-y-1.5 text-left">
-          <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Target Language</label>
-          <select 
-            value={targetLang}
-            onChange={(e) => setTargetLang(e.target.value)}
-            className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500"
-          >
-            {languages.filter(l => l.code !== 'en').map(l => (
-              <option key={l.code} value={l.code}>{l.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Doc / PDF File Uploader */}
-        <div className="border border-dashed border-zinc-800 rounded-xl p-4 bg-black/30 flex flex-col items-center justify-center text-center space-y-2 mt-2">
-          <Upload className="h-5 w-5 text-zinc-500" />
-          <div className="text-[10px] font-bold text-zinc-400">Translate Docs & PDFs</div>
-          <p className="text-[9px] text-zinc-500 max-w-[150px]">Drag files or click below to upload documents directly</p>
-          
-          <label className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white font-bold text-[10px] px-3 py-1.5 rounded cursor-pointer transition">
-            Choose File
-            <input 
-              type="file" 
-              accept=".pdf,.doc,.docx,.txt" 
-              onChange={handleFileUpload} 
-              className="hidden" 
-            />
-          </label>
-
-          {uploadProgress !== null && (
-            <div className="w-full space-y-1 mt-2">
-              <div className="flex justify-between text-[8px] font-mono text-zinc-400">
-                <span className="truncate max-w-[100px]">{fileName}</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-1 rounded-full overflow-hidden">
-                <div className="bg-indigo-500 h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Editor & Translation View Column */}
-      <div className="lg:col-span-9 flex flex-col gap-6 h-[calc(100vh-12rem)] min-h-0">
-        {/* Module Header */}
-        <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 flex items-center justify-between shrink-0 shadow-lg">
-          <div className="space-y-0.5">
-            <h3 className="text-md font-bold text-white flex items-center gap-2">
-              <Languages className="h-4.5 w-4.5 text-indigo-400" /> Professional Translation Engine
-            </h3>
-            <p className="text-xs text-neutral-400">Ultra-accurate side-by-side localizations preserving formal syntax and tone tags.</p>
-          </div>
-          <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded text-indigo-400 font-mono font-bold uppercase tracking-wider">
-            Enterprise Grade (Gemini)
-          </span>
-        </div>
-
-        {/* Translating Panels */}
-        <div className="flex-1 grid gap-6 md:grid-cols-2 min-h-0">
-          {/* Source Entry Panel */}
-          <div className="bg-zinc-900/20 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-between min-h-0">
-            <div className="flex-1 flex flex-col min-h-0 space-y-3">
-              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Source Content</span>
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="w-full flex-1 bg-black/60 border border-zinc-800 rounded-xl p-4 text-xs text-neutral-200 focus:outline-none focus:border-indigo-500 leading-relaxed resize-none font-sans"
-                placeholder="Type your sentences here..."
-              />
-            </div>
-
-            <button
-              onClick={handleTranslate}
-              disabled={loading || !inputText.trim()}
-              className="w-full mt-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs py-3 rounded-lg transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/15"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Compiling Localization Models...
-                </>
-              ) : (
-                <>
-                  <Globe2 className="h-3.5 w-3.5 animate-pulse" /> Translate Content
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Translation Result Panel */}
-          <div className="bg-black border border-zinc-800/80 rounded-xl flex flex-col overflow-hidden min-h-0 shadow-2xl">
-            <div className="bg-zinc-900/60 px-4 py-3 border-b border-zinc-800/80 flex justify-between items-center shrink-0">
-              <span className="text-xs font-mono font-bold text-neutral-400 flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 text-indigo-400" /> Localized Translation Output
-              </span>
-              {translatedText && (
-                <button 
-                  onClick={handleCopy}
-                  className="text-neutral-400 hover:text-white transition p-1.5 hover:bg-zinc-800 rounded flex items-center gap-1 text-[10px] font-semibold"
-                >
-                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              )}
-            </div>
-
-            <div className="flex-1 p-5 overflow-y-auto leading-relaxed text-xs text-neutral-200 text-left font-sans whitespace-pre-wrap select-text">
-              {translatedText ? (
-                translatedText
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center text-zinc-500 space-y-3 px-4">
-                  <Globe2 className="h-8 w-8 text-zinc-600 animate-pulse" />
-                  <div>
-                    <h4 className="text-xs font-bold text-zinc-400">Translation Console Standby</h4>
-                    <p className="text-[10px] text-zinc-500 mt-0.5 max-w-xs">Run a translation trigger. Clean localization translations will compile into this viewport instantly.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+type Language = { code: string; name: string; script?: string }; type GlossaryEntry = { id?: string; source: string; target: string };
+const fallbackLanguages: Language[] = [{ code: 'en', name: 'English' }, { code: 'hi', name: 'Hindi' }, { code: 'hinglish', name: 'Hinglish' }, { code: 'fr', name: 'French' }, { code: 'de', name: 'German' }, { code: 'es', name: 'Spanish' }];
+const fallbackModes = ['Standard', 'Natural', 'Formal', 'Informal', 'Business', 'Academic', 'Marketing', 'Technical', 'Legal', 'Medical', 'Conversational'];
+const preserveOptions = ['formatting', 'headings', 'code', 'urls', 'numbers', 'dates', 'citations', 'tables'] as const;
+const authHeaders = (user?: any): Record<string, string> => user?.email && !user.guest ? { Authorization: `Bearer ${user.email}` } : {};
+export default function Translation({ initialText = '', currentUser, onOpenUpgradeModal, onSelectWorkspace, setSharedText }: { initialText?: string; currentUser?: any; onOpenUpgradeModal: () => void; onSelectWorkspace: (id: WorkspaceId) => void; setSharedText: (text: string) => void }) {
+  if (currentUser?.guest) currentUser = undefined;
+  const [source, setSource] = useState(initialText); const [output, setOutput] = useState(''); const [languages, setLanguages] = useState<Language[]>(fallbackLanguages); const [modes, setModes] = useState<string[]>(fallbackModes); const [sourceLanguage, setSourceLanguage] = useState('auto'); const [targetLanguage, setTargetLanguage] = useState('hi'); const [mode, setMode] = useState('Standard'); const [tone, setTone] = useState('Preserve source tone'); const [contentType, setContentType] = useState('Plain text'); const [preserve, setPreserve] = useState<Record<string, boolean>>(Object.fromEntries(preserveOptions.map(key => [key, true]))); const [keywords, setKeywords] = useState(''); const [glossary, setGlossary] = useState<GlossaryEntry[]>([]); const [glossarySource, setGlossarySource] = useState(''); const [glossaryTarget, setGlossaryTarget] = useState(''); const [tab, setTab] = useState<'translate' | 'glossary' | 'memory'>('translate'); const [memory, setMemory] = useState<any[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [review, setReview] = useState<any>(null); const [detection, setDetection] = useState<any>(null); const [limit, setLimit] = useState(20000); const [copied, setCopied] = useState(false);
+  const authenticated = Boolean(currentUser && !currentUser.guest); const headers = useMemo(() => authHeaders(currentUser), [currentUser]);
+  useEffect(() => { fetch('/api/translation/config').then(r => r.json()).then(config => { if (config.languages?.length) setLanguages(config.languages); if (config.modes?.length) setModes(config.modes); if (config.characterLimit) setLimit(config.characterLimit); }).catch(() => {}); }, []);
+  useEffect(() => { if (!authenticated) return; fetch('/api/translation/glossary', { headers }).then(r => r.json()).then(data => setGlossary(data.entries || [])).catch(() => {}); fetch('/api/translation/memory', { headers }).then(r => r.json()).then(data => setMemory(data.entries || [])).catch(() => {}); }, [authenticated, headers]);
+  const translate = async () => { if (!source.trim() || source.length > limit || loading) return; setLoading(true); setError(''); setReview(null); try { const response = await fetch('/api/translation/translate', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ text: source, sourceLanguage, targetLanguage, mode, tone, contentType, preserve: { ...preserve, keywords: keywords.split(',').map(x => x.trim()).filter(Boolean) }, glossary }) }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || 'Translation failed.'); setOutput(body.translation); setReview(body.review); setDetection(body.detection); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
+  const swap = () => { if (sourceLanguage === 'auto') return; setSourceLanguage(targetLanguage); setTargetLanguage(sourceLanguage); setSource(output); setOutput(source); setReview(null); };
+  const upload = async (file?: File) => { if (!file) return; const ext = file.name.split('.').pop()?.toLowerCase(); if (!['txt', 'md', 'markdown', 'csv', 'json', 'html', 'htm'].includes(ext || '')) { setError('Use PDF Intelligence to extract PDF text first. DOCX and preserved-layout translation are not configured.'); return; } if (file.size > 5 * 1024 * 1024) { setError('This file exceeds the 5 MB local text-file limit.'); return; } setSource(await file.text()); setContentType(ext === 'json' ? 'JSON' : ext === 'csv' ? 'CSV' : ext?.startsWith('htm') ? 'HTML' : ext?.startsWith('md') ? 'Markdown' : 'Plain text'); setOutput(''); setError(''); };
+  const save = async () => { if (!authenticated) return onOpenUpgradeModal(); const response = await fetch('/api/translation/saved', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ text: source, targetText: output, sourceLanguage: detection?.code || sourceLanguage, targetLanguage, mode, tone, contentType, preserve: { ...preserve, keywords: keywords.split(',').map(x => x.trim()).filter(Boolean) } }) }); if (!response.ok) setError((await response.json()).error || 'Could not save translation.'); else setMemory(prev => [{ id: crypto.randomUUID(), sourceLanguage: detection?.code || sourceLanguage, targetLanguage, approvedAt: new Date().toISOString() }, ...prev]); };
+  const addGlossary = async () => { if (!authenticated) return onOpenUpgradeModal(); if (!glossarySource.trim() || !glossaryTarget.trim()) return; const response = await fetch('/api/translation/glossary', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ source: glossarySource, target: glossaryTarget }) }); const body = await response.json(); if (response.ok) { setGlossary(prev => [...prev, body.entry]); setGlossarySource(''); setGlossaryTarget(''); } else setError(body.error); };
+  const removeGlossary = async (entry: GlossaryEntry) => { if (!entry.id) return; const response = await fetch(`/api/translation/glossary/${entry.id}`, { method: 'DELETE', headers }); if (response.ok) setGlossary(prev => prev.filter(item => item.id !== entry.id)); };
+  const download = (extension: 'txt' | 'md' | 'html' | 'json') => { const content = extension === 'json' ? JSON.stringify({ sourceLanguage: detection?.code || sourceLanguage, targetLanguage, source, translation: output }, null, 2) : extension === 'html' ? `<!doctype html><html><meta charset="utf-8"><body><article>${output.replace(/[&<>]/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[x]!)).replace(/\n/g, '<br>')}</article></body></html>` : output; const url = URL.createObjectURL(new Blob([content], { type: extension === 'json' ? 'application/json' : extension === 'html' ? 'text/html' : 'text/plain' })); const a = document.createElement('a'); a.href = url; a.download = `translation.${extension}`; a.click(); URL.revokeObjectURL(url); };
+  const handoff = (workspace: WorkspaceId) => { if (!output) return; setSharedText(output); onSelectWorkspace(workspace); };
+  return <div className="mx-auto max-w-7xl space-y-4 pb-10"><header className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-black sm:text-3xl"><Languages className="h-7 w-7 text-teal-500" /> Translation Studio</h1><p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">Translate and review multilingual content with terminology and formatting controls.</p></div><nav aria-label="Translation Studio sections" className="flex rounded-xl border bg-white p-1 dark:border-zinc-800 dark:bg-zinc-900">{(['translate', 'glossary', 'memory'] as const).map(item => <button key={item} onClick={() => setTab(item)} className={`rounded-lg px-3 py-2 text-xs font-bold capitalize ${tab === item ? 'bg-teal-500 text-white' : 'text-slate-500'}`}>{item === 'memory' ? 'Translation Memory' : item}</button>)}</nav></header>
+  {tab === 'translate' && <><section className="grid gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5 dark:border-zinc-800 dark:bg-zinc-900"><label className="text-xs font-bold">Source language<select aria-label="Source language" value={sourceLanguage} onChange={e => setSourceLanguage(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950"><option value="auto">Auto detect</option>{languages.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select></label><button onClick={swap} disabled={sourceLanguage === 'auto'} className="hidden self-end justify-self-center rounded-lg border p-2 lg:block" aria-label="Swap languages"><ArrowLeftRight className="h-4 w-4" /></button><label className="text-xs font-bold">Target language<select aria-label="Target language" value={targetLanguage} onChange={e => setTargetLanguage(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950">{languages.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select></label><label className="text-xs font-bold">Mode<select aria-label="Translation mode" value={mode} onChange={e => setMode(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950">{modes.map(x => <option key={x}>{x}</option>)}</select></label><label className="text-xs font-bold">Content type<select value={contentType} onChange={e => setContentType(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950">{['Plain text', 'Markdown', 'HTML', 'CSV', 'JSON', 'Website copy', 'Blog', 'Email', 'Resume', 'UI strings'].map(x => <option key={x}>{x}</option>)}</select></label></section>
+  <section className="rounded-2xl border bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"><div className="grid gap-3 lg:grid-cols-[1fr_auto_1fr]"><div><div className="mb-2 flex items-center justify-between"><h2 className="font-black">Original</h2><label className="cursor-pointer rounded-lg border px-2 py-1 text-xs font-bold"><Upload className="mr-1 inline h-3 w-3" />Upload text<input type="file" className="sr-only" accept=".txt,.md,.markdown,.csv,.json,.html,.htm" onChange={e => upload(e.target.files?.[0])} /></label></div><textarea aria-label="Source content" value={source} onChange={e => { setSource(e.target.value); setReview(null); }} placeholder="Type or paste content to translate…" className="min-h-72 w-full resize-y rounded-xl border p-4 leading-6 dark:border-zinc-700 dark:bg-zinc-950"/><div className={`mt-1 text-right text-xs ${source.length > limit ? 'font-bold text-rose-600' : 'text-slate-400'}`}>{source.length.toLocaleString()} / {limit.toLocaleString()} characters</div></div><ArrowLeftRight className="hidden h-5 w-5 self-center text-slate-300 lg:block"/><div><div className="mb-2 flex items-center justify-between"><h2 className="font-black">Translation</h2>{detection && <span className="text-xs text-slate-500">Detected {languages.find(x => x.code === detection.code)?.name || detection.code} · {detection.confidence} confidence{detection.mixed ? ' · mixed language' : ''}</span>}</div><textarea aria-label="Translated content" value={output} onChange={e => setOutput(e.target.value)} placeholder="Your translation will appear here…" className="min-h-72 w-full resize-y rounded-xl border p-4 leading-6 dark:border-zinc-700 dark:bg-zinc-950"/></div></div>
+  <div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-bold">Tone<input value={tone} onChange={e => setTone(e.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950" /></label><label className="mt-3 block text-xs font-bold">Protected keywords<input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="GXA, CRM, product name" className="mt-1 w-full rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950" /></label></div><fieldset><legend className="text-xs font-bold">Preserve</legend><div className="mt-2 flex flex-wrap gap-2">{preserveOptions.map(key => <label key={key} className="rounded-full border px-3 py-1.5 text-xs capitalize"><input type="checkbox" checked={preserve[key]} onChange={e => setPreserve(p => ({ ...p, [key]: e.target.checked }))} className="mr-1" />{key}</label>)}</div></fieldset></div>
+  {error && <div role="alert" className="mt-4 flex gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950"><AlertTriangle className="h-5 w-5 shrink-0" />{error}</div>}{review && <div aria-live="polite" className="mt-4 rounded-xl bg-slate-50 p-3 text-sm dark:bg-zinc-950"><div className="flex items-center gap-2 font-bold"><ClipboardCheck className="h-4 w-4 text-teal-500" />Quality review</div>{review.warnings?.length ? <ul className="mt-2 list-disc pl-5 text-amber-700">{review.warnings.map((x: string) => <li key={x}>{x}</li>)}</ul> : <p className="mt-1 text-emerald-600">Protected numbers, URLs and keywords passed automated checks.</p>}</div>}
+  <div className="mt-4 flex flex-wrap gap-2"><button onClick={translate} disabled={!source.trim() || source.length > limit || loading} className="rounded-xl bg-teal-500 px-5 py-2.5 text-sm font-black text-white disabled:opacity-40">{loading ? <><Loader2 className="mr-2 inline h-4 w-4 animate-spin"/>Translating…</> : 'Translate'}</button><button disabled={!output} onClick={() => { navigator.clipboard.writeText(output); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="rounded-xl border px-3 py-2 text-sm font-bold"><Copy className="mr-1 inline h-4 w-4"/>{copied ? 'Copied' : 'Copy'}</button><button disabled={!output} onClick={save} className="rounded-xl border px-3 py-2 text-sm font-bold"><Save className="mr-1 inline h-4 w-4"/>Save</button>{(['txt', 'md', 'html', 'json'] as const).map(ext => <button key={ext} disabled={!output} onClick={() => download(ext)} className="rounded-xl border px-3 py-2 text-sm font-bold"><Download className="mr-1 inline h-4 w-4"/>{ext.toUpperCase()}</button>)}<button disabled={!output} onClick={() => handoff('grammar')} className="rounded-xl border px-3 py-2 text-sm font-bold">Grammar Check</button><button disabled={!output} onClick={() => handoff('ai-humanizer')} className="rounded-xl border px-3 py-2 text-sm font-bold">Humanize</button><button disabled={!output} onClick={() => handoff('ai-writing')} className="rounded-xl border px-3 py-2 text-sm font-bold">AI Writer</button></div></section></>}
+  {tab === 'glossary' && <section className="rounded-2xl border bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><h2 className="text-lg font-black">Custom glossary</h2><p className="text-sm text-slate-500">Approved brand and project terminology is private to your account and applied to translation prompts.</p>{!currentUser && <button onClick={onOpenUpgradeModal} className="mt-4 rounded-xl bg-teal-500 px-4 py-2 text-sm font-bold text-white">Sign in to manage glossary</button>}{currentUser && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><input aria-label="Glossary source term" value={glossarySource} onChange={e => setGlossarySource(e.target.value)} placeholder="Source term" className="rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950"/><input aria-label="Approved translation" value={glossaryTarget} onChange={e => setGlossaryTarget(e.target.value)} placeholder="Approved translation" className="rounded-lg border p-2 dark:border-zinc-700 dark:bg-zinc-950"/><button onClick={addGlossary} className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-bold text-white"><Plus className="mr-1 inline h-4 w-4"/>Add</button></div>}<div className="mt-4 divide-y dark:divide-zinc-800">{glossary.map(entry => <div key={entry.id || entry.source} className="flex items-center justify-between py-3"><span><strong>{entry.source}</strong> → {entry.target}</span>{entry.id && <button onClick={() => removeGlossary(entry)} aria-label={`Delete ${entry.source}`}><Trash2 className="h-4 w-4 text-rose-500"/></button>}</div>)}{!glossary.length && <p className="py-10 text-center text-sm text-slate-400">No glossary entries yet.</p>}</div></section>}
+  {tab === 'memory' && <section className="rounded-2xl border bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><h2 className="text-lg font-black">Translation memory</h2><p className="text-sm text-slate-500">Saved translations create private approved-memory records. Source and translated text are not returned in this summary view.</p>{!currentUser ? <button onClick={onOpenUpgradeModal} className="mt-4 rounded-xl bg-teal-500 px-4 py-2 text-sm font-bold text-white">Sign in to access memory</button> : <div className="mt-4 divide-y dark:divide-zinc-800">{memory.map(item => <div key={item.id} className="flex items-center gap-3 py-3"><Check className="h-4 w-4 text-emerald-500"/><span className="text-sm">{languages.find(x => x.code === item.sourceLanguage)?.name || item.sourceLanguage} → {languages.find(x => x.code === item.targetLanguage)?.name || item.targetLanguage}</span><time className="ml-auto text-xs text-slate-400">{new Date(item.approvedAt).toLocaleDateString()}</time></div>)}{!memory.length && <p className="py-10 text-center text-sm text-slate-400">No approved translations yet.</p>}</div>}</section>}
+  {output && <div className="flex flex-wrap gap-2"><button onClick={() => handoff('ai-chat')} className="rounded-xl border px-3 py-2 text-sm font-bold">Continue in AI Chat</button><button onClick={() => onSelectWorkspace('pdf-intelligence')} className="rounded-xl border px-3 py-2 text-sm font-bold">Open PDF Intelligence</button></div>}
+  <footer className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"><FileText className="h-4 w-4 shrink-0"/>PDF text should be extracted in PDF Intelligence before translation. DOCX/PDF layout-preserving export and external translation-memory matching are not configured. Legal and medical modes are informational only.</footer></div>;
 }
