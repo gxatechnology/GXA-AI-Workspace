@@ -23,7 +23,6 @@ interface LibraryPrompt {
   category: 'Coding' | 'Marketing' | 'Forensics' | 'Academic';
   description: string;
   template: string;
-  rating: number;
 }
 
 export default function PromptEngineering() {
@@ -35,7 +34,6 @@ export default function PromptEngineering() {
       category: 'Coding',
       description: 'Optimize typescript structures to support lazy initialization layers.',
       template: 'You are an elite Principal Software Architect. Act as an automated code supervisor. Refactor the following TypeScript file to utilize lazy-loaded classes, strong error checking, and named ESM variables. \nTarget File:\n{INPUT}',
-      rating: 4.9
     },
     {
       id: 'p-2',
@@ -44,7 +42,6 @@ export default function PromptEngineering() {
       category: 'Marketing',
       description: 'Optimize landing pages and ads with quantitative metric hooks.',
       template: 'You are an award-winning Enterprise SaaS Copywriter. Rephrase the following product value proposition. Break it down into quantitative metric statements focusing on reducing operational bottlenecks and maximizing LTV.\nPropositions:\n{INPUT}',
-      rating: 4.8
     },
     {
       id: 'p-3',
@@ -53,7 +50,6 @@ export default function PromptEngineering() {
       category: 'Forensics',
       description: 'Determine structural probability of robotic language origin.',
       template: 'You are a Linguistic Forensic Analyst. Evaluate the perplexity and sentence burstiness of this document. Outline highlighted indicators of generative AI origin.\nTarget Text:\n{INPUT}',
-      rating: 4.7
     }
   ]);
 
@@ -62,10 +58,10 @@ export default function PromptEngineering() {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Builder States
-  const [role, setRole] = useState<string>('Senior React Consultant');
-  const [context, setContext] = useState<string>('Designing high-performance state hooks');
-  const [constraints, setConstraints] = useState<string>('Never include infinite dependency arrays; enforce named imports.');
-  const [outputStyle, setOutputStyle] = useState<string>('Step-by-step modular markdown codeblocks with inline descriptions');
+  const [role, setRole] = useState<string>('');
+  const [context, setContext] = useState<string>('');
+  const [constraints, setConstraints] = useState<string>('');
+  const [outputStyle, setOutputStyle] = useState<string>('');
   const [compiledPrompt, setCompiledPrompt] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -83,9 +79,9 @@ export default function PromptEngineering() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-12 text-left h-full">
+    <div className="grid gap-6 rounded-2xl bg-slate-950 p-4 text-left text-zinc-100 lg:grid-cols-12 lg:h-full">
       {/* Category selector */}
-      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col h-[calc(100vh-12rem)]">
+      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col lg:h-[calc(100vh-12rem)]">
         <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2 block font-mono mb-3">
           Engineering Panel
         </span>
@@ -113,7 +109,7 @@ export default function PromptEngineering() {
             <BookOpen className="h-4 w-4" />
             <div className="flex flex-col">
               <span>Prompt Library</span>
-              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Browse 120+ team templates</span>
+              <span className="text-[9px] text-zinc-400 font-medium mt-0.5">Browse {libraryPrompts.length} built-in examples</span>
             </div>
           </button>
 
@@ -143,7 +139,7 @@ export default function PromptEngineering() {
       </div>
 
       {/* Main Builder Console */}
-      <div className="lg:col-span-9 flex flex-col gap-6 h-[calc(100vh-12rem)] min-h-0">
+      <div className="lg:col-span-9 flex flex-col gap-6 lg:h-[calc(100vh-12rem)] min-h-0">
         {activeTab === 'builder' ? (
           <div className="flex-1 flex flex-col gap-6 min-h-0">
             {/* Header */}
@@ -169,6 +165,7 @@ export default function PromptEngineering() {
                     <input 
                       type="text"
                       value={role}
+                      placeholder="For example: Senior React consultant"
                       onChange={(e) => setRole(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500 font-mono"
                     />
@@ -179,6 +176,7 @@ export default function PromptEngineering() {
                     <input 
                       type="text"
                       value={context}
+                      placeholder="Describe the task and its context"
                       onChange={(e) => setContext(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500"
                     />
@@ -188,6 +186,7 @@ export default function PromptEngineering() {
                     <label className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block">Operating Constraints</label>
                     <textarea 
                       value={constraints}
+                      placeholder="Add explicit boundaries and requirements"
                       onChange={(e) => setConstraints(e.target.value)}
                       rows={3}
                       className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500 resize-none font-sans"
@@ -199,6 +198,7 @@ export default function PromptEngineering() {
                     <input 
                       type="text"
                       value={outputStyle}
+                      placeholder="Describe the required response structure"
                       onChange={(e) => setOutputStyle(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-neutral-300 focus:outline-none focus:border-indigo-500"
                     />
@@ -268,7 +268,7 @@ export default function PromptEngineering() {
                       <span className="text-[9px] font-extrabold uppercase bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded tracking-wide font-mono">
                         {p.category}
                       </span>
-                      <span className="text-[9px] font-mono text-amber-400 font-bold">★ {p.rating}</span>
+                      <span className="text-[9px] font-mono text-zinc-500">Built-in example</span>
                     </div>
                     <span className="font-bold block mt-2">{p.title}</span>
                     <span className="text-[10px] text-zinc-500 block mt-1 leading-normal">{p.description}</span>

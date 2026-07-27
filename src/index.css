@@ -26,3 +26,39 @@
   background: rgba(100, 116, 139, 0.4);
 }
 
+.writer-pane {
+  display: none;
+}
+
+.writer-pane[data-mobile-active="true"] {
+  display: flex;
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .writer-pane[data-writer-pane="templates"] {
+    display: flex;
+  }
+
+  .writer-pane[data-writer-pane="editor"][data-laptop-active="true"],
+  .writer-pane[data-writer-pane="preview"][data-laptop-active="true"] {
+    display: flex;
+  }
+}
+
+@media (min-width: 1280px) {
+  .writer-pane {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

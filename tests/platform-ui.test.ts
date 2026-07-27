@@ -23,7 +23,7 @@ test('authentication screen never publishes sandbox credentials', () => {
     initialAuthMode: 'login',
   }));
 
-  assert.match(markup, /Secure Log In/);
+  assert.match(markup, /Log in/);
   assert.doesNotMatch(markup, /sandbox login/i);
   assert.doesNotMatch(markup, /password123/i);
   assert.doesNotMatch(markup, /tauqeerashraf250/i);
