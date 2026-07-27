@@ -101,3 +101,17 @@ export function missingFrozenTerms(output: string, terms: string[] = []) {
   const normalized = output.toLocaleLowerCase();
   return terms.filter(term => !normalized.includes(term.toLocaleLowerCase()));
 }
+
+export function validateParaphraseOutput(request: ParaphraseRequest, output: string) {
+  const text = output.trim();
+  if (!text) throw new Error('PARAPHRASE_EMPTY_OUTPUT');
+  const missingTerms = missingFrozenTerms(text, request.frozenTerms);
+  const sourceNumbers = request.text.match(/\b\d[\d,.%:/-]*\b/g) || [];
+  const missingNumbers = [...new Set(sourceNumbers)].filter(value => !text.includes(value));
+  const sourceUrls = request.text.match(/https?:\/\/[^\s)]+/g) || [];
+  const missingUrls = [...new Set(sourceUrls)].filter(value => !text.includes(value));
+  const sourceNames = request.text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) || [];
+  const missingNames = [...new Set(sourceNames)].filter(value => !text.includes(value));
+  if (missingTerms.length || missingNumbers.length || missingUrls.length || missingNames.length) throw new Error('PARAPHRASE_PRESERVATION_FAILED');
+  return text;
+}

@@ -137,7 +137,7 @@ export default function PromptEngineering() {
             <span className="font-bold">PromptTip</span>
           </div>
           <p className="text-[10px] leading-relaxed text-zinc-500">
-            Specify rigid formatting rules and high perplexity limits inside constraints to force structured outputs from Gemini.
+            Specify clear formatting rules and explicit constraints to produce reliable structured output through the approved backend model.
           </p>
         </div>
       </div>

@@ -43,7 +43,7 @@ const emptyStores: Record<string, any> = {
   sessions: {}, subscriptions: {}, usageEvents: [], quotaReservations: {}, auditEvents: [], securityEvents: [],
   apiKeys: {}, webhookEndpoints: {}, webhookDeliveries: {}, automations: {}, automationExecutions: {},
   featureFlags: {}, dataExports: {}, deletionRequests: {}, idempotencyRecords: {}, providerHealth: {}, jobs: {}, deadLetterJobs: {},
-  pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, contactSalesLeads: {}, billingEvents: [],
+  pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, contactSalesLeads: {}, billingEvents: [], aiProviderRequests: [],
 };
 
 export function personalWorkspaceId(userId: string) { return `personal_${hashSecret(userId).slice(0, 20)}`; }

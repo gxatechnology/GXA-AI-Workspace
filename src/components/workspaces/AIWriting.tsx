@@ -197,7 +197,6 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
 
   // Admin Variables
   const [adminConfig, setAdminConfig] = useState({
-    defaultModel: 'gemini-3.5-flash',
     maxFreeGenerations: 10,
     maxFreeWordCount: 500,
     rateLimitMinute: 60
@@ -747,7 +746,7 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
                 GXA AI Writer Studio
               </h1>
               <span className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[9px] font-mono px-2 py-0.5 rounded-md">
-                Gemini Multi-Drafting v3.5
+                Secure Server-Routed AI
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-zinc-400">High-fidelity distraction-free drafting studio with templates, /slash commands, inline editing, and context mapping.</p>
@@ -1635,19 +1634,6 @@ export default function AIWriting({ currentUser, onOpenUpgradeModal, initialText
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Target Engine Model</label>
-                <select 
-                  value={adminConfig.defaultModel} 
-                  onChange={(e) => setAdminConfig(prev => ({ ...prev, defaultModel: e.target.value }))}
-                  className="w-full bg-slate-100 dark:bg-zinc-950 p-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-700 dark:text-zinc-300"
-                >
-                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (Ultra Fast / Default)</option>
-                  <option value="gemini-2.5-pro">Gemini 2.5 Pro (Extreme Precision)</option>
-                  <option value="claude-3-opus">Claude 3 Opus (Creative Prose)</option>
-                </select>
-              </div>
-
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Free Tier Generation Limit</label>
                 <input 

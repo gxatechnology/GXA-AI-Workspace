@@ -16,7 +16,7 @@ import {
   Download,
   Info
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { generateContent } from '../../utils/ai';
 
 interface DocTemplate {
   id: string;
@@ -129,8 +129,8 @@ export default function Templates() {
       const prompt = `Form Details:\n${inputsString}\n\nDraft the complete document based on these form fields. Deliver ONLY the final document draft.`;
 
       const response = await generateContent({
+        tool: 'ai_writer',
         prompt,
-        systemInstruction: activeTemp.systemInstruction
       });
 
       setDraftedContent(response);

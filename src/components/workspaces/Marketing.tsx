@@ -15,7 +15,7 @@ import {
   Sparkles,
   FileText
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { generateContent } from '../../utils/ai';
 
 export default function Marketing() {
   const [activeTab, setActiveTab] = useState<'ads' | 'email' | 'social' | 'seo'>('ads');
@@ -95,9 +95,8 @@ Please provide the output strictly as a JSON object with this exact structure:
 Return ONLY valid JSON. No markdown backticks or wrappers.`;
 
       const response = await generateContent({
+        tool: 'marketing_analysis',
         prompt,
-        systemInstruction: 'You are an elite Google and Meta conversion copywriting strategist at GXA Technologies.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
@@ -135,9 +134,8 @@ Please provide the output strictly as a JSON object with this exact structure:
 Return ONLY valid JSON. No markdown tags.`;
 
       const response = await generateContent({
+        tool: 'marketing_analysis',
         prompt,
-        systemInstruction: 'You are an enterprise email delivery and high-CTR marketing architect.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
@@ -173,9 +171,8 @@ Format the output strictly as a JSON array of 3 objects, where each object has:
 Return ONLY valid JSON array.`;
 
       const response = await generateContent({
+        tool: 'marketing_analysis',
         prompt,
-        systemInstruction: 'You are a growth marketing and social strategist.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
@@ -203,9 +200,8 @@ Format the output strictly as a JSON array of 5 strings, each being a high-relev
 Return ONLY valid JSON array.`;
 
       const response = await generateContent({
+        tool: 'marketing_analysis',
         prompt,
-        systemInstruction: 'You are an SEO Strategist analyzing search Intent.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);

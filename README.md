@@ -1,20 +1,17 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
-
-# Run and deploy your AI Studio app
+# GXA AI Workspace
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: https://ai.studio/apps/ab0806d2-8ba4-437e-83c4-7f2dfb6b4706
-
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js 22 or newer
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Install dependencies with `npm ci`.
+2. Copy `.env.example` to an untracked local environment file.
+3. Set `OPENROUTER_API_KEY`, `OPENROUTER_SITE_URL`, and the existing application configuration values.
+4. Run `npm run dev`.
+
+The production defaults use OpenRouter only. Direct OpenAI and Gemini adapters are retained but disabled by `OPENAI_ENABLED=false` and `GEMINI_ENABLED=false`. AI credentials are server-only and must never use `VITE_`, `NEXT_PUBLIC_`, or `REACT_APP_` prefixes.
+
+See [docs/openrouter-provider-architecture.md](docs/openrouter-provider-architecture.md) for routing, model, security, quota, and Vercel configuration details.

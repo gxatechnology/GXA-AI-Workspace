@@ -12,7 +12,7 @@ import {
   Zap,
   Info
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { generateContent } from '../../utils/ai';
 
 export default function Growth() {
   const [activeTab, setActiveTab] = useState<'calculator' | 'abtest' | 'swot'>('calculator');
@@ -91,7 +91,7 @@ export default function Growth() {
   const [swotCompetitors, setSwotCompetitors] = useState('AcmeCorp, TechVanguard');
   const [swotIndustry, setSwotIndustry] = useState('B2B Enterprise Workflow Orchestration');
   const [swotReport, setSwotReport] = useState<any>({
-    strengths: ['Fully consolidated technology, copywriter, and automation workspace', 'Native low-latency Gemini 3.5 APIs preconfigured', 'Lower total operational cost structure (40% consolidated savings)'],
+    strengths: ['Fully consolidated technology, copywriter, and automation workspace', 'Secure server-routed AI generation', 'Lower total operational cost structure (40% consolidated savings)'],
     weaknesses: ['New brand entrant requiring primary trust validation', 'Complex platform capabilities demanding structured learning curves'],
     opportunities: ['Expanding global operational compliance demands', 'Mid-market SaaS companies seeking developer stack consolidation'],
     threats: ['Legacy single-point product systems pricing aggressively', 'Sudden cloud database pricing increases']
@@ -114,9 +114,8 @@ Return the analysis strictly as a JSON object with this exact structure:
 Return ONLY valid JSON. No markdown tags.`;
 
       const response = await generateContent({
+        tool: 'growth_analysis',
         prompt,
-        systemInstruction: 'You are an enterprise SaaS market analyst and positioning officer.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
