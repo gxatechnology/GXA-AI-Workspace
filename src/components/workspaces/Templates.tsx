@@ -153,9 +153,9 @@ export default function Templates() {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-12 text-left h-full">
+    <div className="grid h-full gap-6 rounded-2xl bg-zinc-950 p-3 text-left text-white sm:p-4 lg:grid-cols-12">
       {/* Template Deck Sidebar */}
-      <div className="lg:col-span-3 bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-4 flex flex-col h-[calc(100vh-12rem)]">
+      <div className="flex min-h-72 flex-col rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-4 lg:col-span-3 lg:h-[calc(100vh-12rem)]">
         <div className="relative mb-3">
           <span className="absolute left-3 top-2.5 text-zinc-500">
             <Search className="h-4 w-4" />
@@ -164,7 +164,7 @@ export default function Templates() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search 19 templates..."
+            placeholder={`Search ${templates.length} templates...`}
             className="w-full bg-black/60 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-neutral-300 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
           />
         </div>
@@ -208,7 +208,7 @@ export default function Templates() {
       </div>
 
       {/* Main Interactive Form Column */}
-      <div className="lg:col-span-9 flex flex-col gap-6 h-[calc(100vh-12rem)] min-h-0">
+      <div className="flex min-h-0 flex-col gap-6 lg:col-span-9 lg:h-[calc(100vh-12rem)]">
         <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 flex items-center justify-between shrink-0 shadow-lg">
           <div className="space-y-0.5">
             <h3 className="text-md font-bold text-white flex items-center gap-2">
@@ -217,14 +217,14 @@ export default function Templates() {
             <p className="text-xs text-neutral-400">{activeTemp.desc}</p>
           </div>
           <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-mono font-bold uppercase tracking-wider">
-            Ready to Draft
+            Ready
           </span>
         </div>
 
         {/* Form and Preview Panels */}
-        <div className="flex-1 grid gap-6 md:grid-cols-2 min-h-0">
+        <div className="grid gap-6 md:grid-cols-2 lg:min-h-0 lg:flex-1">
           {/* Inputs Column */}
-          <div className="bg-zinc-900/20 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-between min-h-0">
+          <div className="flex min-h-[28rem] flex-col justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/20 p-5 lg:min-h-0">
             <div className="space-y-4 flex-1 overflow-y-auto pr-1">
               {activeTemp.fields.map((field) => (
                 <div key={field.key} className="space-y-1.5 text-left">
@@ -247,21 +247,21 @@ export default function Templates() {
             >
               {loading ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Drafting Academic Structure...
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating draft...
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-3.5 w-3.5" /> Compile Template Draft
+                  <Sparkles className="h-3.5 w-3.5" /> Generate draft
                 </>
               )}
             </button>
           </div>
 
-          {/* Letterhead Preview Column */}
-          <div className="bg-white text-zinc-900 border border-zinc-200 rounded-xl flex flex-col overflow-hidden min-h-0 shadow-2xl relative">
+          {/* Document Preview Column */}
+          <div className="relative flex min-h-[28rem] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white text-zinc-900 shadow-2xl lg:min-h-0">
             <div className="bg-zinc-100 px-4 py-2 border-b border-zinc-200 flex justify-between items-center shrink-0">
               <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider">
-                Letterhead Preview Canvas
+                Document preview
               </span>
               {draftedContent && (
                 <div className="flex items-center gap-2">
@@ -276,7 +276,7 @@ export default function Templates() {
               )}
             </div>
 
-            {/* Simulated physical printed letterhead page structure */}
+            {/* Generated document preview */}
             <div className="flex-1 p-8 overflow-y-auto leading-relaxed text-xs text-zinc-800 text-left font-serif whitespace-pre-wrap select-text">
               {draftedContent ? (
                 draftedContent
@@ -284,8 +284,8 @@ export default function Templates() {
                 <div className="h-full flex flex-col items-center justify-center text-center text-zinc-400 space-y-3 px-4 font-sans">
                   <FileText className="h-8 w-8 text-zinc-300 animate-pulse" />
                   <div>
-                    <h4 className="text-xs font-bold text-zinc-600">Letterhead Draft Empty</h4>
-                    <p className="text-[10px] text-zinc-400 mt-0.5 max-w-xs">Fill out the variable attributes inside the input form. Clicking draft compiles formal typography outputs here instantly.</p>
+                    <h4 className="text-xs font-bold text-zinc-600">Your preview is empty</h4>
+                    <p className="mt-0.5 max-w-xs text-[10px] text-zinc-400">Complete the form, then choose Generate draft. Your result will appear here.</p>
                   </div>
                 </div>
               )}

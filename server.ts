@@ -654,7 +654,7 @@ app.post('/api/writer/generate', async (req, res) => {
     request = validateWriterRequest(req.body, userPlan);
   } catch (error) {
     if (error instanceof WriterValidationError) {
-      return res.status(error.status).json({ error: error.message, code: error.status === 403 ? 'PREMIUM_TEMPLATE' : 'INVALID_REQUEST', field: error.field });
+      return res.status(error.status).json({ error: error.message, code: error.status === 403 ? 'PREMIUM_TEMPLATE' : 'INVALID_REQUEST', field: error.field, fields: error.fieldErrors });
     }
     return res.status(400).json({ error: 'The writing request is invalid.', code: 'INVALID_REQUEST' });
   }

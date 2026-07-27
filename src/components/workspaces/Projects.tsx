@@ -34,11 +34,16 @@ export default function Projects() {
   const [filterType, setFilterType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   // Fetch real database projects
   const fetchProjects = async () => {
     const savedUser = localStorage.getItem('gxa_user');
-    if (!savedUser) return;
+    if (!savedUser) { setLoading(false); setLoadError('Sign in to load your projects.'); return; }
+    setLoading(true);
+    setLoadError('');
     try {
       const user = JSON.parse(savedUser);
       const res = await fetch('/api/projects', {
@@ -46,12 +51,12 @@ export default function Projects() {
           'Authorization': `Bearer ${user.sessionToken}`
         }
       });
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data.projects || []);
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Projects could not be loaded.');
+      setProjects(data.projects || []);
     } catch (err) {
       console.error(err);
+      setLoadError('Projects could not be loaded. Your existing projects were not changed.');
     } finally {
       setLoading(false);
     }
@@ -63,7 +68,9 @@ export default function Projects() {
 
   const createBlankDraft = async () => {
     const savedUser = localStorage.getItem('gxa_user');
-    if (!savedUser) return;
+    if (!savedUser || creating) return;
+    setCreating(true);
+    setActionError('');
     try {
       const user = JSON.parse(savedUser);
       const res = await fetch('/api/projects', {
@@ -73,19 +80,19 @@ export default function Projects() {
           'Authorization': `Bearer ${user.sessionToken}`
         },
         body: JSON.stringify({
-          name: 'Untitled Blank Draft',
+          name: 'Untitled Draft',
           type: 'Document',
-          toolUsed: 'AI Writer',
-          previewText: 'Write or paste your creative draft here. Click save draft to commit changes to the workspace repository.',
-          size: '1.5 KB',
-          status: 'Draft'
+          toolUsed: 'AI Writer'
         })
       });
-      if (res.ok) {
-        await fetchProjects();
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Draft creation failed.');
+      await fetchProjects();
     } catch (err) {
       console.error(err);
+      setActionError('The draft could not be created. Try again.');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -141,9 +148,10 @@ export default function Projects() {
         </div>
         <button 
           onClick={createBlankDraft}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 text-xs font-bold shadow-md transition shrink-0"
+          disabled={creating}
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white px-4 py-2.5 text-xs font-bold shadow-md transition shrink-0"
         >
-          <Plus className="h-4 w-4" /> Create Draft
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} {creating ? 'Creating…' : 'Create Draft'}
         </button>
       </div>
 
@@ -156,10 +164,12 @@ export default function Projects() {
               <span className="text-[10px] font-bold bg-slate-50 dark:bg-zinc-800 px-2 py-0.5 rounded-full text-slate-500 dark:text-zinc-400">{folder.count} items</span>
             </div>
             <h4 className="text-xs font-bold text-slate-900 dark:text-white mt-3">{folder.name}</h4>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">Updated just now</p>
+            <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{folder.count ? 'Based on saved project data' : 'No activity yet'}</p>
           </div>
         ))}
       </div>
+
+      {actionError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{actionError}</div>}
 
       {/* Grid Filters Control Bar */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200/60 dark:border-zinc-800 shadow-xs">
@@ -221,6 +231,8 @@ export default function Projects() {
           <Loader2 className="mx-auto h-8 w-8 text-teal-500 animate-spin" />
           <span className="text-xs text-slate-400 font-bold block">Synchronizing your document vault...</span>
         </div>
+      ) : loadError ? (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-8 text-center dark:border-rose-900 dark:bg-rose-950/30"><h3 className="text-sm font-black text-rose-800 dark:text-rose-200">Projects unavailable</h3><p className="mx-auto mt-2 max-w-md text-xs leading-5 text-rose-700 dark:text-rose-300">{loadError}</p><button onClick={fetchProjects} className="mt-4 rounded-xl bg-rose-700 px-4 py-2 text-xs font-black text-white">Retry</button></div>
       ) : filteredProjects.length === 0 ? (
         /* Dynamic High Fidelity Empty State */
         <div className="text-center py-16 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200/60 dark:border-zinc-800 space-y-4">
@@ -235,7 +247,7 @@ export default function Projects() {
             onClick={createBlankDraft}
             className="inline-flex items-center gap-1.5 bg-teal-500 hover:bg-teal-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
           >
-            Create Blank Draft <Plus className="h-3.5 w-3.5" />
+            {creating ? 'Creating…' : 'Create Blank Draft'} <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
       ) : viewMode === 'grid' ? (
@@ -281,7 +293,7 @@ export default function Projects() {
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold">{project.toolUsed || 'AI Writer'}</span>
                     <span>•</span>
-                    <span>{project.updatedAt || 'Just now'}</span>
+                    <span>{project.updatedAt || 'Date unavailable'}</span>
                   </div>
 
                   <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition duration-200">
@@ -323,8 +335,8 @@ export default function Projects() {
                       <td className="p-4 font-bold text-slate-900 dark:text-white truncate max-w-[200px]">{project.name}</td>
                       <td className="p-4">{projType}</td>
                       <td className="p-4 font-semibold text-slate-500 dark:text-zinc-400">{project.toolUsed || 'AI Writer'}</td>
-                      <td className="p-4">{project.updatedAt || 'Just now'}</td>
-                      <td className="p-4 font-mono text-[10px] text-slate-400">{project.size || '1.0 KB'}</td>
+                      <td className="p-4">{project.updatedAt || 'Date unavailable'}</td>
+                      <td className="p-4 font-mono text-[10px] text-slate-400">{project.size || 'Size unavailable'}</td>
                       <td className="p-4">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           projStatus === 'Draft' ? 'bg-slate-50 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400' :

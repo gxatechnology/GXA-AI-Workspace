@@ -28,26 +28,49 @@ export default function App() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [upgradeRequest, setUpgradeRequest] = useState<UpgradeRequest>({ featureKey: 'writer.premium_templates', featureName: 'this feature', sourceTool: 'workspace', returnRoute: 'home' });
   const [currentPlanKey, setCurrentPlanKey] = useState('free');
+  const [authReady, setAuthReady] = useState(() => !storedUser());
+  const isAuthenticated = Boolean(currentUser && !currentUser.guest);
+  const isAdmin = isAuthenticated && (currentUser.role === 'SuperAdmin' || Boolean(currentUser.adminRole));
 
   useEffect(() => {
     const restoredUser = storedUser();
     if (restoredUser) {
       fetch('/api/auth/profile', { headers: authHeaders(restoredUser) })
         .then(async response => { if (!response.ok) throw new Error('Session expired.'); return response.json(); })
-        .then(async body => { const next = { ...body.user, sessionToken: restoredUser.sessionToken }; setCurrentUser(next); localStorage.setItem('gxa_user', JSON.stringify(next)); const current = await fetchCurrentPlan(next).catch(() => null); setCurrentPlanKey(current?.currentPlanKey || next.subscription || 'free'); if (window.location.pathname.startsWith('/admin') && (next.role === 'SuperAdmin' || next.adminRole)) setActiveWorkspace('administration'); })
-        .catch(() => { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); if (window.location.pathname.startsWith('/admin')) setAuthMode('login'); });
-    }
-    const hash = window.location.hash.replace('#/', '').split('?')[0] as WorkspaceId;
-    if (workspaceIds.has(hash)) setActiveWorkspace(hash);
-    if (window.location.pathname.startsWith('/admin')) {
-      setPendingWorkspace('administration');
-      if (restoredUser?.role === 'SuperAdmin' || restoredUser?.adminRole) setActiveWorkspace('administration');
-      else setAuthMode('login');
+        .then(async body => { const next = { ...body.user, sessionToken: restoredUser.sessionToken }; setCurrentUser(next); localStorage.setItem('gxa_user', JSON.stringify(next)); const current = await fetchCurrentPlan(next).catch(() => null); setCurrentPlanKey(current?.currentPlanKey || next.subscription || 'free'); })
+        .catch(() => { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); })
+        .finally(() => setAuthReady(true));
+    } else {
+      setAuthReady(true);
     }
   }, []);
 
-  const isAuthenticated = Boolean(currentUser && !currentUser.guest);
-  const isAdmin = isAuthenticated && (currentUser.role === 'SuperAdmin' || Boolean(currentUser.adminRole));
+  useEffect(() => {
+    if (!authReady) return;
+    const syncRoute = () => {
+      if (window.location.pathname.startsWith('/admin')) {
+        setPendingWorkspace('administration');
+        if (isAdmin) { setActiveWorkspace('administration'); setAuthMode(null); }
+        else setAuthMode('login');
+        return;
+      }
+      const hash = window.location.hash.replace('#/', '').split('?')[0] as WorkspaceId;
+      const route = workspaceIds.has(hash) ? hash : 'home';
+      if (isAuthenticatedRoute(route) && !isAuthenticated) {
+        setPendingWorkspace(route);
+        setAuthMode('login');
+        return;
+      }
+      setPendingWorkspace(null);
+      setAuthMode(null);
+      setActiveWorkspace(route);
+    };
+    syncRoute();
+    window.addEventListener('hashchange', syncRoute);
+    window.addEventListener('popstate', syncRoute);
+    return () => { window.removeEventListener('hashchange', syncRoute); window.removeEventListener('popstate', syncRoute); };
+  }, [authReady, isAuthenticated, isAdmin]);
+
   const activeTool = useMemo(() => getTool(activeWorkspace), [activeWorkspace]);
 
   const selectWorkspace = (route: WorkspaceId) => {

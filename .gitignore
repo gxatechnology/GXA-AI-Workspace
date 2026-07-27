@@ -6,6 +6,9 @@ dist/
 *.vsix
 *.log
 coverage/
+artifacts/
+playwright-report/
+test-results/
 .DS_Store
 db.*.json
 *.tmp

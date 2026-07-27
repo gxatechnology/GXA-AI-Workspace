@@ -6,6 +6,7 @@ export interface WriterGenerateRequest {
   length: string;
   audience: string;
   purpose: string;
+  readingLevel: string;
   keywords: string[];
   customInstructions: string;
   existingContent: string;
@@ -25,7 +26,7 @@ export interface WriterGenerateResponse {
 }
 
 export class WriterApiError extends Error {
-  constructor(message: string, public status: number, public code?: string, public field?: string) {
+  constructor(message: string, public status: number, public code?: string, public field?: string, public fields: Record<string, string> = {}) {
     super(message);
   }
 }
@@ -42,6 +43,6 @@ export async function generateWriterContent(request: WriterGenerateRequest, sign
     signal,
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new WriterApiError(payload.error || 'The writing request failed.', response.status, payload.code, payload.field);
+  if (!response.ok) throw new WriterApiError(payload.error || 'The writing request failed.', response.status, payload.code, payload.field, payload.fields || {});
   return payload as WriterGenerateResponse;
 }
