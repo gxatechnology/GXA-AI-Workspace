@@ -15,7 +15,7 @@
     "lint": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
     "test:e2e": "playwright test",
-    "test:visual": "playwright test tests/e2e/ai-writer.visual.spec.ts",
+    "test:visual": "playwright test tests/e2e/ai-writer.visual.spec.ts tests/e2e/theme-export.visual.spec.ts",
     "test:route-audit": "playwright test tests/e2e/route-audit.spec.ts",
     "typecheck": "tsc --noEmit",
     "migration:status": "tsx scripts/platform-migration.ts status",

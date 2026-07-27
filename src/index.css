@@ -1,10 +1,171 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
   --font-mono: "Fira Code", monospace;
+}
+
+:root {
+  color-scheme: light;
+  --color-page-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-border: #cbd5e1;
+  --color-border-strong: #94a3b8;
+  --color-input-bg: #ffffff;
+  --color-input-text: #0f172a;
+  --color-placeholder: #64748b;
+  --color-primary: #0d9488;
+  --color-primary-hover: #0f766e;
+  --color-primary-action: #0f766e;
+  --color-primary-action-hover: #115e59;
+  --color-on-primary: #ffffff;
+  --color-success: #047857;
+  --color-warning: #b45309;
+  --color-danger: #be123c;
+  --color-focus-ring: #0d9488;
+  --color-disabled-bg: #e2e8f0;
+  --color-disabled-text: #64748b;
+  --color-overlay: rgb(15 23 42 / 0.65);
+}
+
+:root.dark,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-page-bg: #09090b;
+  --color-surface: #18181b;
+  --color-surface-elevated: #27272a;
+  --color-surface-muted: #27272a;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #d4d4d8;
+  --color-text-muted: #a1a1aa;
+  --color-border: #3f3f46;
+  --color-border-strong: #52525b;
+  --color-input-bg: #09090b;
+  --color-input-text: #f4f4f5;
+  --color-placeholder: #a1a1aa;
+  --color-primary: #2dd4bf;
+  --color-primary-hover: #5eead4;
+  --color-primary-action: #0f766e;
+  --color-primary-action-hover: #115e59;
+  --color-on-primary: #ffffff;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #fb7185;
+  --color-focus-ring: #2dd4bf;
+  --color-disabled-bg: #27272a;
+  --color-disabled-text: #a1a1aa;
+  --color-overlay: rgb(9 9 11 / 0.72);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+}
+
+.app-shell,
+.theme-page {
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+}
+
+.theme-surface {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.theme-muted-surface {
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+}
+
+.theme-control {
+  border-color: var(--color-border);
+  background: var(--color-input-bg);
+  color: var(--color-input-text);
+}
+
+.theme-control::placeholder {
+  color: var(--color-placeholder);
+  opacity: 1;
+}
+
+.theme-secondary-action,
+.theme-chip {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.theme-secondary-action:not(:disabled):hover,
+.theme-chip:not(:disabled):hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+}
+
+.theme-chip:has(input:checked) {
+  border-color: color-mix(in srgb, var(--color-primary) 72%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  color: var(--color-text-primary);
+}
+
+.theme-popover {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+}
+
+.theme-menu-item {
+  color: var(--color-text-secondary);
+}
+
+.theme-menu-item:not(:disabled):hover,
+.theme-menu-item:not(:disabled):focus-visible {
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+}
+
+.theme-primary-action,
+.theme-brand-mark {
+  background: var(--color-primary-action);
+  color: var(--color-on-primary);
+}
+
+.theme-primary-action:not(:disabled):hover {
+  background: var(--color-primary-action-hover);
+}
+
+.theme-warning {
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
+  color: var(--color-warning);
+}
+
+:where(button, input, select, textarea, summary, [role="menuitem"]):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+:where(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+}
+
+:where(input, select, textarea) {
+  accent-color: var(--color-primary);
 }
 
 /* Custom scrollbars and transitions */

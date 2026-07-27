@@ -1494,7 +1494,8 @@ if (isProd) {
   app.use('*', async (req, res, next) => {
     try {
       const url = req.originalUrl;
-      const html = await vite.transformIndexHtml(url, `<!doctype html><html><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>GXA AI Workspace</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>`);
+      const template = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+      const html = await vite.transformIndexHtml(url, template);
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);

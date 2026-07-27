@@ -37,6 +37,7 @@ import {
   Settings2,
   Languages
 } from 'lucide-react';
+import ExportMenu from '../ui/ExportMenu';
 import { checkGrammar } from '../../utils/grammar';
 import { 
   fetchSystemConfig, 
@@ -700,22 +701,20 @@ export default function Grammar({
             <span className="hidden sm:inline">Settings</span>
           </button>
 
-          {/* Export Dropdown toggle */}
-          <div className="relative group">
-            <button 
-              aria-label="Export revision"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition"
-            >
+          <ExportMenu
+            triggerLabel="Export revision"
+            triggerClassName="flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            options={[
+              { id: 'txt', label: 'Plain Text (TXT)' },
+              { id: 'md', label: 'Markdown (MD)' },
+              { id: 'docx', label: 'Word (DOCX)' },
+              { id: 'pdf', label: 'Acrobat (PDF)' },
+            ]}
+            onSelect={format => handleExport(format as 'txt' | 'md' | 'docx' | 'pdf')}
+          >
               <Download className="h-4 w-4" />
               <span>Export</span>
-            </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl py-1 w-32 shadow-lg z-20">
-              <button onClick={() => handleExport('txt')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-zinc-800 transition">Plain Text (TXT)</button>
-              <button onClick={() => handleExport('md')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-zinc-800 transition">Markdown (MD)</button>
-              <button onClick={() => handleExport('docx')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-zinc-800 transition">Word (DOCX)</button>
-              <button onClick={() => handleExport('pdf')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-zinc-800 transition">Acrobat (PDF)</button>
-            </div>
-          </div>
+          </ExportMenu>
 
           <button 
             onClick={() => setShowHelpModal(true)} 
@@ -1056,21 +1055,21 @@ export default function Grammar({
           <div className="bg-slate-100/70 dark:bg-zinc-900/40 p-1.5 border border-slate-200/60 dark:border-zinc-800/80 rounded-xl flex">
             <button 
               onClick={() => setRightPanelTab('suggestions')}
-              className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'suggestions' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'suggestions' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
               Corrections
             </button>
             <button 
               onClick={() => setRightPanelTab('analytics')}
               disabled={!hasAnalysis}
-              className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'analytics' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'analytics' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
               Writing Insights
             </button>
             {adminConfig.featureFlags.compareMode && (
               <button 
                 onClick={() => setRightPanelTab('compare')}
-                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'compare' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition ${rightPanelTab === 'compare' ? 'bg-white dark:bg-zinc-900 text-teal-600 dark:text-teal-400 shadow-xs' : 'text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
               >
                 Compare
               </button>
@@ -1096,7 +1095,7 @@ export default function Grammar({
                     Fix All Safe ({safeFixCount})
                   </button>
                 ) : (
-                  <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-0.5 rounded-full font-bold">{hasAnalysis ? 'No issues found' : 'Not checked'}</span>
+                  <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-300 px-2 py-0.5 rounded-full font-bold">{hasAnalysis ? 'No issues found' : 'Not checked'}</span>
                 )}
               </div>
 
