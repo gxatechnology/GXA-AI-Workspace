@@ -1,6 +1,6 @@
 {
   "name": "GXA AI Workspace",
-  "description": "Enterprise AI Workspace for Technology, Marketing, Automation, and Growth by GXA Technologies. Features multi-workspace tools, professional design, and Gemini integrations.",
+  "description": "Enterprise AI Workspace for Technology, Marketing, Automation, and Growth by GXA Technologies with server-side OpenRouter AI routing.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_OPENROUTER_API"]
 }

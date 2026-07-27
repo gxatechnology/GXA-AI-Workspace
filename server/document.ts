@@ -117,3 +117,27 @@ export function retrievePages(pages: ExtractedPage[], query: string, limit = 4) 
   const terms = new Set(query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
   return pages.map(page => ({ ...page, score: [...terms].reduce((score, term) => score + (page.text.toLowerCase().includes(term) ? 1 : 0), 0) })).filter(page => page.text.trim()).sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
 }
+
+export function chunkDocumentPages(pages: ExtractedPage[], maxCharacters = 350_000, maxChunks = 3) {
+  const chunks: Array<{ pages: number[]; text: string }> = [];
+  let current = { pages: [] as number[], text: '' };
+  let consumedCharacters = 0;
+  const totalCharacters = pages.filter(item => item.text.trim()).reduce((sum, item) => sum + item.text.trim().length, 0);
+  for (const page of pages.filter(item => item.text.trim())) {
+    let remaining = page.text.trim();
+    while (remaining && chunks.length < maxChunks) {
+      const prefix = `<source page="${page.page}">\n`;
+      const suffix = '\n</source>\n\n';
+      const capacity = Math.max(1, maxCharacters - current.text.length - prefix.length - suffix.length);
+      if (capacity <= 1 && current.text) { chunks.push(current); current = { pages: [], text: '' }; continue; }
+      const segment = remaining.slice(0, capacity); remaining = remaining.slice(segment.length); consumedCharacters += segment.length;
+      current.text += `${prefix}${segment}${suffix}`;
+      if (!current.pages.includes(page.page)) current.pages.push(page.page);
+      if (current.text.length >= maxCharacters - 100 || remaining) { chunks.push(current); current = { pages: [], text: '' }; }
+    }
+    if (chunks.length >= maxChunks) break;
+  }
+  if (current.text && chunks.length < maxChunks) chunks.push(current);
+  if (consumedCharacters < totalCharacters) throw new DocumentValidationError('Document text exceeds the configured summary processing limit. The uploaded document is preserved.', 413, 'DOCUMENT_SUMMARY_LIMIT');
+  return chunks;
+}

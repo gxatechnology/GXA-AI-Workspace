@@ -35,6 +35,10 @@ export interface GrammarIssue {
   premium: boolean;
 }
 
+export class GrammarProviderOutputError extends Error {
+  constructor(message = 'The grammar provider returned an invalid structured response.') { super(message); this.name = 'GrammarProviderOutputError'; }
+}
+
 const cleanList = (value: unknown, max: number, maxLength: number) => Array.isArray(value)
   ? [...new Set(value.map(String).map(item => item.trim()).filter(Boolean))].filter(item => item.length <= maxLength).slice(0, max)
   : [];
@@ -71,7 +75,7 @@ export function validateGrammarRequest(value: unknown): { ok: true; request: Gra
 }
 
 export function buildGrammarPrompt(request: GrammarCheckRequest) {
-  return `Analyze SOURCE_TEXT and return JSON only. Report specific, supportable issues; never invent an error or score. Offsets are zero-based UTF-16 positions in the exact source text. Replacements must fit the reported range. Each explanation must state what is wrong, why, the relevant writing principle, and one short generic example; acknowledge optional style choices.
+  return `Analyze SOURCE_TEXT and return JSON only. Preserve the user's meaning and facts. Report only specific, supportable issues; never invent an error, rule, score, or information. Offsets are zero-based UTF-16 positions in the exact source text. Replacements must fit the reported range. Each explanation must state what is wrong and why; acknowledge optional style choices.
 
 LANGUAGE: ${request.language}
 ENABLED CATEGORIES: ${request.categories.join(', ')}
@@ -80,10 +84,37 @@ PERSONAL DICTIONARY: ${request.dictionary.join(' | ') || 'None'}
 DOCUMENT GOALS: ${JSON.stringify(request.goals)}
 
 JSON SCHEMA:
-{"issues":[{"category":"Grammar","severity":"error","startOffset":0,"endOffset":4,"originalText":"text","replacements":["replacement"],"title":"Specific title","explanation":"Plain-language reason and principle","ruleId":"stable-rule-id","confidence":0.95,"sentenceContext":"containing sentence","premium":false}],"tone":{"label":"Neutral","evidence":["specific non-sensitive pattern"]}}
+{"correctedText":"full corrected source text","issues":[{"start":0,"end":4,"original":"text","replacement":"replacement","category":"grammar|spelling|punctuation|capitalization|clarity|conciseness|passive voice|repeated words|sentence structure|style","explanation":"plain-language reason","confidence":"low|medium|high"}],"tone":{"label":"Neutral","evidence":["specific non-sensitive pattern"]}}
 
 SOURCE_TEXT:
 <source_text>${request.text}</source_text>`;
+}
+
+const providerCategoryMap: Record<string, string> = {
+  grammar: 'Grammar', spelling: 'Spelling', punctuation: 'Punctuation', capitalization: 'Capitalization', clarity: 'Clarity',
+  conciseness: 'Conciseness', 'passive voice': 'Passive Voice', 'repeated words': 'Repetition', 'sentence structure': 'Sentence Structure', style: 'Style',
+};
+const providerConfidence: Record<string, number> = { low: 0.45, medium: 0.7, high: 0.95 };
+
+export function parseGrammarProviderOutput(value: string, sourceText: string) {
+  let raw: any;
+  try { raw = JSON.parse(value.replace(/```json|```/gi, '').trim()); } catch { throw new GrammarProviderOutputError(); }
+  if (!raw || typeof raw !== 'object' || typeof raw.correctedText !== 'string' || !Array.isArray(raw.issues)) throw new GrammarProviderOutputError();
+  const issues = raw.issues.map((item: any, index: number) => {
+    const startOffset = Number(item?.start); const endOffset = Number(item?.end);
+    const originalText = String(item?.original ?? ''); const replacement = typeof item?.replacement === 'string' ? item.replacement : '';
+    const providerCategory = String(item?.category || '').trim().toLowerCase(); const category = providerCategoryMap[providerCategory];
+    const confidenceLabel = String(item?.confidence || '').trim().toLowerCase();
+    if (!Number.isInteger(startOffset) || !Number.isInteger(endOffset) || startOffset < 0 || endOffset <= startOffset || endOffset > sourceText.length) throw new GrammarProviderOutputError();
+    if (!originalText || sourceText.slice(startOffset, endOffset) !== originalText || !replacement || !category || !(confidenceLabel in providerConfidence)) throw new GrammarProviderOutputError();
+    const explanation = String(item?.explanation || '').trim(); if (!explanation) throw new GrammarProviderOutputError();
+    return { category, severity: ['Grammar', 'Spelling', 'Punctuation', 'Capitalization'].includes(category) ? 'error' : 'suggestion', startOffset, endOffset, originalText, replacements: [replacement], title: `${category} suggestion`, explanation, ruleId: `${providerCategory.replace(/\s+/g, '-')}-${index + 1}`, confidence: providerConfidence[confidenceLabel], sentenceContext: '', premium: !CORE_GRAMMAR_CATEGORIES.has(category) };
+  }).sort((left: any, right: any) => left.startOffset - right.startOffset);
+  for (let index = 1; index < issues.length; index += 1) if (issues[index].startOffset < issues[index - 1].endOffset) throw new GrammarProviderOutputError();
+  let correctedText = sourceText;
+  for (const issue of [...issues].reverse()) correctedText = `${correctedText.slice(0, issue.startOffset)}${issue.replacements[0]}${correctedText.slice(issue.endOffset)}`;
+  if (raw.correctedText !== correctedText) throw new GrammarProviderOutputError();
+  return { correctedText, raw: { issues, tone: raw.tone } };
 }
 
 export function normalizeGrammarIssues(raw: unknown, text: string, premium: boolean): GrammarIssue[] {

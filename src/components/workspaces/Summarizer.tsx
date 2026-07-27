@@ -11,7 +11,7 @@ import {
   RefreshCw,
   FolderOpen
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { generateContent } from '../../utils/ai';
 
 export default function Summarizer({ initialText = '' }: { initialText?: string }) {
   const [inputText, setInputText] = useState(initialText);
@@ -31,8 +31,8 @@ export default function Summarizer({ initialText = '' }: { initialText?: string 
       const formatPrompt = summaryFormat === 'bullets' ? 'concise bulleted key takeaways' : summaryFormat === 'paragraph' ? 'a single cohesive structured paragraph' : 'a professional executive summary with main brief, challenges, and outcomes';
 
       const response = await generateContent({
+        tool: 'summarizer',
         prompt: `Text to summarize: ${inputText}\n\nTarget length: ${lengthPrompt}, Format style: ${formatPrompt}`,
-        systemInstruction: "You are GXA Intelligent Summarizer. Condense dense publications, articles, contracts, or engineering reports down to their core, high-impact messages. Be objective, accurate, and completely avoid secondary AI filler language."
       });
 
       setSummary(response);

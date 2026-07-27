@@ -14,7 +14,7 @@ import {
   Trash2,
   GitBranch
 } from 'lucide-react';
-import { generateContent } from '../../utils/gemini';
+import { generateContent } from '../../utils/ai';
 
 export default function Technology() {
   const [activeTab, setActiveTab] = useState<'code' | 'db' | 'api'>('code');
@@ -166,8 +166,8 @@ Goal / Requirement: ${codePrompt}
 Provide ONLY valid executable code with brief and clear developer comments inside the code block. Do NOT surround with markdown codeblocks tags like \`\`\`.`;
       
       const response = await generateContent({
+        tool: 'technology_writer',
         prompt,
-        systemInstruction: 'You are an elite Staff Frontend Architect at GXA Technologies. You write high-fidelity, production-grade, optimized code and patterns.'
       });
       setCodeResult(response.trim());
       setSuccessMsg('Code generated successfully!');
@@ -202,9 +202,8 @@ Please return the response as a JSON object with the following structure:
 Return ONLY valid JSON. No markdown wrappers.`;
 
       const response = await generateContent({
+        tool: 'technology_writer',
         prompt,
-        systemInstruction: 'You are an Enterprise SaaS Architect at GXA Technologies. You design structured SQL schemas and diagrams in JSON format.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
@@ -217,8 +216,8 @@ Return ONLY valid JSON. No markdown wrappers.`;
       // Fallback SQL generation if JSON parse fails
       try {
         const textResponse = await generateContent({
+          tool: 'technology_writer',
           prompt: `Generate standard SQL schema script based on ${dbPrompt} for database type ${dbType}. Do not write markdown wrappers.`,
-          systemInstruction: 'You are an Enterprise SaaS database designer.'
         });
         setDbSQL(textResponse.trim());
       } catch (innerErr) {}
@@ -245,9 +244,8 @@ Provide a JSON output containing:
 Return ONLY valid JSON without markdown wrapping.`;
 
       const response = await generateContent({
+        tool: 'technology_writer',
         prompt,
-        systemInstruction: 'You are a principal API architect designing pristine corporate API suites.',
-        responseMimeType: 'application/json'
       });
 
       const data = JSON.parse(response);
