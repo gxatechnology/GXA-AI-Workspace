@@ -9,9 +9,10 @@ The legacy data migration is additive and idempotent. It creates the Phase 12 te
 3. Run `npm run migration:dry-run`; confirm `destructive` is `false` and review every pending change.
 4. Run `npm run migration:apply` against the verified legacy JSON backup.
 5. Apply the PostgreSQL schema with `npm run db:migrate`.
-6. Import the verified JSON backup with `npm run db:migrate:json -- --file=/secure/path/to/db.json`.
-7. Repeat the import command and confirm the same source hash is reported as already imported.
-8. Start the application and verify authentication, Personal Workspace access, saved documents, settings, admin authorization and one representative Phase 1–11 tool.
+6. Preview the verified JSON backup with `npm run db:migrate:json:dry-run -- --file=/secure/path/to/db.json`.
+7. Import it with `npm run db:migrate:json -- --file=/secure/path/to/db.json`.
+8. Repeat the import command and confirm the same source hash is reported as already imported.
+9. Start the application and verify authentication, Personal Workspace access, saved documents, settings, admin authorization and one representative Phase 1–11 tool.
 
 The legacy apply command writes a timestamped backup beside the JSON database before using an atomic temporary-file rename. It never deletes a store or record. Re-running it reports no pending schema work.
 

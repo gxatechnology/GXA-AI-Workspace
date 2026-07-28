@@ -43,7 +43,12 @@ export async function migrationStatus(pool: Pool, directory?: string): Promise<M
   const migrations = await loadSchemaMigrations(directory);
   const client = await pool.connect();
   try {
-    await ensureMigrationTable(client);
+    const table = await client.query<{ table_name: string }>(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'gxa_schema_migrations'
+    `);
+    if (!table.rowCount) return { applied: [], pending: migrations.map(item => item.id) };
     const result = await client.query<{ id: string; checksum: string }>('SELECT id, checksum FROM gxa_schema_migrations ORDER BY id');
     const appliedById = new Map(result.rows.map(row => [row.id, row.checksum]));
     for (const migration of migrations) {

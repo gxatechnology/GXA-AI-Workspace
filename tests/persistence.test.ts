@@ -12,8 +12,8 @@ import { normalizeApplicationDatabase } from '../server/persistence/defaultDatab
 import { ApplicationPersistence } from '../server/persistence/index.js';
 import { JsonDatabaseAdapter } from '../server/persistence/json.js';
 import { mergeLegacyData } from '../server/persistence/merge.js';
-import { runSchemaMigrations } from '../server/persistence/migrations.js';
-import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError } from '../server/persistence/postgres.js';
+import { migrationStatus, runSchemaMigrations } from '../server/persistence/migrations.js';
+import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError, previewLegacyJsonImport } from '../server/persistence/postgres.js';
 import { hashPassword } from '../server/platform.js';
 
 function memoryPool() {
@@ -130,6 +130,9 @@ test('request middleware replaces an uncommitted success with a safe conflict', 
 test('PostgreSQL migrations and JSON import are idempotent and non-destructive', async () => {
   const pool = memoryPool();
   try {
+    const initialStatus = await migrationStatus(pool);
+    assert.deepEqual(initialStatus.applied, []);
+    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation']);
     const firstMigration = await runSchemaMigrations(pool);
     const secondMigration = await runSchemaMigrations(pool);
     assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation']);
@@ -137,10 +140,16 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
 
     const password = hashPassword('migration-password', 'abcdefabcdefabcdefabcdefabcdefab');
     const source: any = { users: { user: { id: 'user', password } }, documents: { user: [{ id: 'doc-1', content: 'saved' }] }, config: { paraphrase_word_limit: 321 }, usage: {} };
+    const preview = await previewLegacyJsonImport(pool, source, 'source-hash-1');
+    assert.equal(preview.wouldImport, true);
+    assert.equal((await pool.query('SELECT COUNT(*) AS count FROM gxa_state_records')).rows[0].count, 0);
+    assert.equal((await pool.query('SELECT COUNT(*) AS count FROM gxa_json_imports')).rows[0].count, 0);
     const firstImport = await importLegacyJson(pool, source, 'source-hash-1', 'test');
     const secondImport = await importLegacyJson(pool, source, 'source-hash-1', 'test');
+    const repeatedPreview = await previewLegacyJsonImport(pool, source, 'source-hash-1');
     assert.equal(firstImport.imported, true);
     assert.equal(secondImport.imported, false);
+    assert.equal(repeatedPreview.wouldImport, false);
     const snapshot = await loadPostgresSnapshot(pool);
     assert.equal(snapshot.data.users.user.password, password);
     assert.equal(snapshot.data.documents.user[0].content, 'saved');

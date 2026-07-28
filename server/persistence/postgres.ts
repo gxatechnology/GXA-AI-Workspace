@@ -4,7 +4,7 @@ import type { Pool, PoolConfig, PoolClient } from 'pg';
 import pg from 'pg';
 import { changedRootKeys, mergeLegacyData } from './merge.js';
 import { normalizeApplicationDatabase } from './defaultDatabase.js';
-import { runSchemaMigrations } from './migrations.js';
+import { migrationStatus } from './migrations.js';
 import type { PersistenceConfig } from './config.js';
 
 const { Pool: PgPool } = pg;
@@ -151,45 +151,59 @@ export async function importLegacyJson(pool: Pool, source: Record<string, any>, 
   }
 }
 
-export async function importLegacyJsonFile(pool: Pool, file: string, sourceLabel = 'legacy-json') {
+export async function previewLegacyJsonImport(pool: Pool, source: Record<string, any>, sourceHash: string) {
+  const normalized = normalizeApplicationDatabase(source);
+  const alreadyImported = await pool.query('SELECT 1 FROM gxa_json_imports WHERE source_hash = $1', [sourceHash]);
+  if (alreadyImported.rowCount) return { wouldImport: false, sourceHash, keys: 0, records: recordCount(normalized) };
+  const current = await readRows(pool);
+  let changedKeys = 0;
+  for (const [key, sourceValue] of Object.entries(normalized)) {
+    const existingValue = current.data[key];
+    const merged = existingValue === undefined ? sourceValue : mergeLegacyData(existingValue, sourceValue);
+    if (existingValue === undefined || JSON.stringify(merged) !== JSON.stringify(existingValue)) changedKeys += 1;
+  }
+  return { wouldImport: true, sourceHash, keys: changedKeys, records: recordCount(normalized) };
+}
+
+async function readLegacyJsonFile(file: string) {
   const bytes = await fs.readFile(file);
   const sourceHash = crypto.createHash('sha256').update(bytes).digest('hex');
   let parsed: unknown;
   try { parsed = JSON.parse(bytes.toString('utf8')); }
   catch { throw new Error('The legacy JSON database is invalid and was not imported.'); }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('The legacy JSON database must contain an object.');
-  return importLegacyJson(pool, parsed as Record<string, any>, sourceHash, sourceLabel);
+  return { sourceHash, source: parsed as Record<string, any> };
+}
+
+export async function importLegacyJsonFile(pool: Pool, file: string, sourceLabel = 'legacy-json') {
+  const { sourceHash, source } = await readLegacyJsonFile(file);
+  return importLegacyJson(pool, source, sourceHash, sourceLabel);
+}
+
+export async function previewLegacyJsonFile(pool: Pool, file: string) {
+  const { sourceHash, source } = await readLegacyJsonFile(file);
+  return previewLegacyJsonImport(pool, source, sourceHash);
 }
 
 export class PostgresDatabaseAdapter implements DatabaseAdapter {
   readonly provider = 'postgres' as const;
   readonly pool: Pool;
   private migrationPool: Pool | null;
-  private readonly legacyJsonFile: string;
 
-  constructor(private readonly config: PersistenceConfig) {
+  constructor(config: PersistenceConfig) {
     this.pool = createPostgresPool(config.databaseUrl!, config);
     this.migrationPool = createPostgresPool(config.directDatabaseUrl!, config, 1);
-    this.legacyJsonFile = config.jsonFile;
   }
 
   async initialize() {
     try {
       const migrationPool = this.migrationPool;
       if (!migrationPool) throw new PersistenceUnavailableError();
-      await runSchemaMigrations(migrationPool);
+      const status = await migrationStatus(migrationPool);
+      if (status.pending.length) throw new PersistenceUnavailableError();
       await this.pool.query('SELECT 1');
-      const existing = await this.pool.query('SELECT 1 FROM gxa_state_records WHERE namespace = $1 LIMIT 1', [APPLICATION_NAMESPACE]);
-      if (!existing.rowCount) {
-        try { await importLegacyJsonFile(migrationPool, this.legacyJsonFile, 'automatic-initial-import'); }
-        catch (error: any) {
-          if (error?.code === 'ENOENT') {
-            const empty = normalizeApplicationDatabase({});
-            const hash = crypto.createHash('sha256').update(JSON.stringify(empty)).digest('hex');
-            await importLegacyJson(migrationPool, empty, hash, 'empty-database-bootstrap');
-          } else throw error;
-        }
-      }
+      const imported = await this.pool.query('SELECT 1 FROM gxa_json_imports LIMIT 1');
+      if (!imported.rowCount) throw new PersistenceUnavailableError();
     } catch {
       throw new PersistenceUnavailableError();
     } finally {

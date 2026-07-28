@@ -23,6 +23,7 @@
     "migration:apply": "tsx scripts/platform-migration.ts apply",
     "db:migrate:status": "tsx scripts/postgres-migration.ts status",
     "db:migrate": "tsx scripts/postgres-migration.ts apply",
+    "db:migrate:json:dry-run": "tsx scripts/postgres-migration.ts import-json-dry-run",
     "db:migrate:json": "tsx scripts/postgres-migration.ts import-json",
     "security:check": "npm audit --omit=dev"
   },

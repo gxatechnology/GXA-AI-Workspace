@@ -31,12 +31,13 @@ Values are server-only and must never be exposed to the frontend, source control
 2. Confirm both database URLs point to the intended Supabase project without printing them.
 3. Run `npm run db:migrate:status`.
 4. Run `npm run db:migrate` using the direct database connection.
-5. Run `npm run db:migrate:json -- --file=/secure/path/to/db.json` once for every distinct legacy database that must be retained.
-6. Run the import command again and confirm `imported` is `false` for the same source hash.
-7. Set `PERSISTENCE_PROVIDER=postgres` and deploy.
-8. Verify login, saved documents, Projects, settings, and one write/read cycle before enabling normal traffic.
+5. Run the read-only preview: `npm run db:migrate:json:dry-run -- --file=/secure/path/to/db.json`.
+6. Run `npm run db:migrate:json -- --file=/secure/path/to/db.json` once for every distinct legacy database that must be retained.
+7. Run the import command again and confirm `imported` is `false` for the same source hash.
+8. Set `PERSISTENCE_PROVIDER=postgres` and deploy.
+9. Verify login, saved documents, Projects, settings, and one write/read cycle before enabling normal traffic.
 
-On an entirely empty PostgreSQL database, application startup imports the configured legacy JSON file once. Startup never merges a changed bundled JSON file into a database that already contains state; later imports must use the explicit migration command.
+Application startup is read-only with respect to schema and import operations. It fails closed until migrations have been applied and at least one JSON import receipt exists. This prevents Preview or production startup from silently importing a bundled file into the wrong database.
 
 The importer is additive. PostgreSQL values remain authoritative, missing object properties and records are added, arrays are deduplicated by stable `id` or `key`, password hashes are copied unchanged, and each source hash is recorded transactionally.
 
