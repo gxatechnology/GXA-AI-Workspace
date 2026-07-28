@@ -4,6 +4,11 @@ import { createPostgresPool, importLegacyJsonFile, previewLegacyJsonFile } from 
 import { migrationStatus, runSchemaMigrations } from '../server/persistence/migrations.js';
 import { resolvePersistenceConfig } from '../server/persistence/config.js';
 
+dotenv.config({
+  path: '.env.local',
+  override: true,
+});
+
 dotenv.config();
 
 const command = process.argv[2] || 'status';
