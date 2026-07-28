@@ -40,6 +40,7 @@ import { validateAIEnvironment, publicAIEnvironment } from './server/ai/config.j
 import { AIService, safeAIError } from './server/ai/service.js';
 import { AIProviderError, type AIMessage, type AIProviderResult, type AIToolKey } from './server/ai/types.js';
 import { AI_MODEL_REGISTRY, AI_TOOL_ROUTING, DIRECT_GEMINI_MEDIA_MODELS, modelKeyForProviderId, publicModelRegistry, resolveToolRoute } from './server/ai/registry.js';
+import { ApplicationPersistence } from './server/persistence/index.js';
 
 dotenv.config();
 
@@ -48,6 +49,9 @@ const aiService = new AIService(aiEnvironment);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DB_FILE = process.env.GXA_DB_FILE ? path.resolve(process.env.GXA_DB_FILE) : path.join(__dirname, 'db.json');
+const persistence = new ApplicationPersistence(process.env, DB_FILE);
+await persistence.initialize();
 
 const app = express();
 app.disable('x-powered-by');
@@ -67,6 +71,7 @@ app.use((req, res, next) => {
   res.on('finish', () => console.info(JSON.stringify({ event: 'http.request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt })));
   next();
 });
+app.use(persistence.middleware());
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 function rateLimit(name: string, limit: number, windowMs: number) {
@@ -80,118 +85,8 @@ function rateLimit(name: string, limit: number, windowMs: number) {
 }
 const hashSecretForLog = (value: string) => crypto.createHash('sha256').update(value).digest('hex').slice(0, 24);
 
-// JSON File Database Configuration
-const DB_FILE = process.env.GXA_DB_FILE ? path.resolve(process.env.GXA_DB_FILE) : process.env.VERCEL ? path.join('/tmp', 'gxa-workspace-db.json') : path.join(__dirname, 'db.json');
-
-function readDb() {
-  let db: any = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {}, aiProviderRequests: [], config: {}, usage: {} };
-  const defaultConfig = {
-    paraphrases_limit: 10,
-    paraphrase_word_limit: 125,
-    ai_chats_limit: 5,
-    chat_message_character_limit: 20000,
-    chat_attachment_limit: 3,
-    chat_attachment_size_mb: 10,
-    chat_history_enabled: true,
-    chat_models: [{ id: 'default', name: 'GXA AI', multimodal: true, plan: 'free' }],
-    pdf_uploads_limit: 3,
-    ocr_pages_limit: 2,
-    document_upload_size_mb: 10,
-    document_page_limit: 100,
-    document_file_count_limit: 5,
-    document_supported_types: ['application/pdf', 'text/plain', 'text/markdown'],
-    grammar_corrections_limit: 5,
-    originality_daily_limit: 5,
-    originality_character_limit: 30000,
-    translation_daily_limit: 10,
-    translation_character_limit: 20000,
-    translation_languages: TRANSLATION_LANGUAGES,
-    translation_modes: TRANSLATION_MODES,
-    career_daily_ai_limit: 5,
-    career_resume_limit: 3,
-    career_import_size_mb: 10,
-    career_templates: RESUME_TEMPLATES,
-    business_daily_generation_limit: 10,
-    business_pro_daily_generation_limit: 100,
-    business_character_limit: 20000,
-    business_tools: BUSINESS_TOOLS,
-    business_languages: BUSINESS_LANGUAGES,
-    media_free_generation_limit: 3,
-    media_pro_generation_limit: 25,
-    media_pro_plus_generation_limit: 100,
-    media_free_vision_limit: 5,
-    media_pro_vision_limit: 50,
-    media_pro_plus_vision_limit: 200,
-    media_character_limit: 4000,
-    media_upload_size_mb: 10,
-    media_batch_limit: 4,
-    media_asset_limit: 100,
-    media_image_model: DIRECT_GEMINI_MEDIA_MODELS.image,
-    media_vision_model: DIRECT_GEMINI_MEDIA_MODELS.vision,
-    media_tools: MEDIA_TOOLS,
-    ai_tool_model_overrides: {},
-    writer_generations_limit: 5,
-    writer_input_word_limit: 1500,
-    writer_output_word_limit: 1200,
-    feature_locks: {
-      academic: true,
-      creative: true,
-      professional: true,
-      custom: true
-    },
-    coupons: [],
-    trial_days: 0
-  };
-
-  if (!fs.existsSync(DB_FILE)) {
-    db = {
-      users: {},
-      projects: {},
-      documents: {},
-      chats: {},
-      analyses: {},
-      translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {}, aiProviderRequests: [],
-      config: defaultConfig,
-      usage: {}
-    };
-    db = applyPlatformMigration(db).db;
-    writeDb(db);
-    return db;
-  }
-  try {
-    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  } catch (err) {
-    db = { users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {}, glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {}, resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {}, aiProviderRequests: [], config: defaultConfig, usage: {} };
-  }
-
-  // Backfill new configuration keys without replacing admin-managed values.
-  if (!db.config || Object.keys(db.config).length === 0) {
-    db.config = defaultConfig;
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-  } else {
-    const mergedConfig = { ...defaultConfig, ...db.config, feature_locks: { ...defaultConfig.feature_locks, ...(db.config.feature_locks || {}) } };
-    if (JSON.stringify(mergedConfig) !== JSON.stringify(db.config)) {
-      db.config = mergedConfig;
-      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-    }
-  }
-  if (!db.usage) {
-    db.usage = {};
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-  }
-  for (const store of ['translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets']) if (!db[store]) db[store] = {};
-  if (!Array.isArray(db.aiProviderRequests)) db.aiProviderRequests = [];
-  const migration = applyPlatformMigration(db);
-  if (migration.changed) writeDb(db);
-  return db;
-}
-
-function writeDb(data: any) {
-  const temp = `${DB_FILE}.${process.pid}.tmp`;
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  fs.writeFileSync(temp, JSON.stringify(data, null, 2), { mode: 0o600 });
-  fs.renameSync(temp, DB_FILE);
-}
+const readDb = () => persistence.read();
+const writeDb = (data: any) => persistence.write(data);
 
 // Helpers for auth check
 const getUserId = (req: express.Request) => {
@@ -495,14 +390,20 @@ app.post('/api/platform/automations/:id/run', rateLimit('automation-run', 60, 60
 
 app.get('/api/platform/audit-logs', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('audit_logs.view')) throw new PlatformError('Audit log permission required.', 403, 'AUTHORIZATION_DENIED'); const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50))); const logs = db.auditEvents.filter((item: any) => item.tenantId === context.tenantId).slice(-limit).reverse(); res.json({ logs, immutable: true }); } catch (error) { safeError(res, error); } });
 app.get('/api/platform/integrations', (req, res) => { try { getContext(req); res.json({ integrations: INTEGRATION_REGISTRY, serviceAccounts: { status: 'not_implemented' }, sso: { status: 'readiness_only', protocols: ['SAML', 'OpenID Connect'] }, mfa: { status: 'not_implemented' } }); } catch (error) { safeError(res, error); } });
-const runDataExportJob = (exportId: string) => setImmediate(() => { const db = readDb(); try { processDataExport(db, exportId); } catch (error: any) { failDataExport(db, exportId, error?.code || 'EXPORT_FAILED'); console.error(JSON.stringify({ event: 'job.failed', jobType: 'data_export', resourceId: exportId, code: error?.code || 'EXPORT_FAILED' })); } writeDb(db); });
+const runDataExportJob = (exportId: string) => persistence.afterCommit(() => setImmediate(() => {
+  persistence.runStandalone(db => {
+    try { processDataExport(db, exportId); }
+    catch (error: any) { failDataExport(db, exportId, error?.code || 'EXPORT_FAILED'); console.error(JSON.stringify({ event: 'job.failed', jobType: 'data_export', resourceId: exportId, code: error?.code || 'EXPORT_FAILED' })); }
+    writeDb(db);
+  }).catch(() => console.error(JSON.stringify({ event: 'job.failed', jobType: 'data_export', resourceId: exportId, code: 'PERSISTENCE_UNAVAILABLE' })));
+}));
 app.get('/api/platform/data-exports', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const exports = Object.values<any>(db.dataExports).filter(item => item.tenantId === context.tenantId).map(({ payload, downloadTokenHash, ...item }) => item).slice(-20).reverse(); res.json({ exports }); } catch (error) { safeError(res, error); } });
 app.post('/api/platform/data-exports', rateLimit('data-export', 5, 24 * 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = requestDataExport(db, context); writeDb(db); runDataExportJob(record.id); const { payload, downloadTokenHash, ...safeRecord } = record as any; res.status(202).json({ export: safeRecord }); } catch (error) { safeError(res, error); } });
 app.post('/api/platform/data-exports/:id/download-token', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = db.dataExports[req.params.id]; if (!record || record.tenantId !== context.tenantId) return res.status(404).json({ error: 'Export not found.' }); const completed = completeDataExport(db, record.id); if (!completed) throw new PlatformError('Export is not ready.', 409, 'EXPORT_NOT_READY'); writeDb(db); res.json({ downloadToken: completed.token, expiresAt: completed.record.expiresAt }); } catch (error) { safeError(res, error); } });
 app.get('/api/platform/data-exports/:id/download', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = db.dataExports[req.params.id]; if (!record || record.tenantId !== context.tenantId || record.status !== 'ready') return res.status(404).json({ error: 'Export is unavailable.' }); const token = String(req.query.token || ''); if (!record.downloadTokenHash || crypto.createHash('sha256').update(token).digest('hex') !== record.downloadTokenHash || Date.parse(record.expiresAt) <= Date.now()) throw new PlatformError('Export link is invalid or expired.', 403, 'EXPORT_LINK_INVALID'); res.setHeader('Content-Type', 'application/json'); res.setHeader('Content-Disposition', 'attachment; filename="gxa-workspace-export.json"'); res.send(Buffer.from(record.payload, 'base64')); } catch (error) { safeError(res, error); } });
 app.post('/api/platform/deletion-requests', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (!verifyPassword(String(req.body.password || ''), String(context.user.password || ''))) throw new AuthenticationError('Reauthentication failed.'); const type = req.body.type === 'organization' ? 'organization' : 'account'; const targetId = type === 'organization' ? String(req.body.targetId || '') : context.user.id; const record = requestDeletion(db, context, type, targetId); writeDb(db); res.status(202).json({ request: record }); } catch (error) { safeError(res, error); } });
 
-app.get('/api/admin/platform', rateLimit('admin-read', 120, 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'users.read'); const users = Object.values<any>(db.users).map(user => publicUser(user)); const organizations = Object.values<any>(db.organizations).map(item => ({ ...item, memberCount: Object.values<any>(db.organizationMemberships).filter(member => member.organizationId === item.id && member.status === 'active').length })); const subscriptions = Object.values<any>(db.subscriptions); const usageTotals = db.usageEvents.reduce((result: any, event: any) => { result[event.dimension] = Number(result[event.dimension] || 0) + Number(event.quantity || 0); return result; }, {}); const aiProviders = Object.entries(aiService.providerStatus()).map(([id, status]) => ({ id, category: 'AI', ...status, state: status.enabled ? (status.configured ? 'configured' : 'unconfigured') : 'disabled' })); res.json({ users, organizations, subscriptions, usageTotals, flags: Object.values(db.featureFlags), providers: [...aiProviders, { id: 'razorpay', category: 'Payment', configured: razorpayConfigured(), state: razorpayConfigured() ? 'configured' : 'unconfigured' }], aiRequests: (db.aiProviderRequests || []).slice(-100).reverse(), health: { database: 'available', storage: 'json-local', billingStorage: billingPersistenceReady() ? 'available' : 'durable_storage_required', queue: 'in-process', email: 'not_configured', paymentWebhooks: razorpayConfigured() ? 'configured' : 'not_configured' }, adminRoles: ADMIN_ROLES, audit: db.auditEvents.slice(-100).reverse(), security: db.securityEvents.slice(-100).reverse() }); } catch (error) { safeError(res, error); } });
+app.get('/api/admin/platform', rateLimit('admin-read', 120, 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'users.read'); const users = Object.values<any>(db.users).map(user => publicUser(user)); const organizations = Object.values<any>(db.organizations).map(item => ({ ...item, memberCount: Object.values<any>(db.organizationMemberships).filter(member => member.organizationId === item.id && member.status === 'active').length })); const subscriptions = Object.values<any>(db.subscriptions); const usageTotals = db.usageEvents.reduce((result: any, event: any) => { result[event.dimension] = Number(result[event.dimension] || 0) + Number(event.quantity || 0); return result; }, {}); const aiProviders = Object.entries(aiService.providerStatus()).map(([id, status]) => ({ id, category: 'AI', ...status, state: status.enabled ? (status.configured ? 'configured' : 'unconfigured') : 'disabled' })); res.json({ users, organizations, subscriptions, usageTotals, flags: Object.values(db.featureFlags), providers: [...aiProviders, { id: 'razorpay', category: 'Payment', configured: razorpayConfigured(), state: razorpayConfigured() ? 'configured' : 'unconfigured' }], aiRequests: (db.aiProviderRequests || []).slice(-100).reverse(), health: { database: 'available', storage: persistence.provider, billingStorage: billingPersistenceReady() ? 'available' : 'durable_storage_required', queue: 'in-process', email: 'not_configured', paymentWebhooks: razorpayConfigured() ? 'configured' : 'not_configured' }, adminRoles: ADMIN_ROLES, audit: db.auditEvents.slice(-100).reverse(), security: db.securityEvents.slice(-100).reverse() }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/users/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'users.read'); const user = db.users[req.params.id]; if (!user) return res.status(404).json({ error: 'User not found.' }); if (req.body.status && ['active', 'suspended'].includes(req.body.status)) { requireAdminScope(context.user, 'organizations.manage'); requireRecentAuthentication(context); if (!String(req.body.reason || '').trim()) throw new PlatformError('A reason is required.', 400, 'REASON_REQUIRED'); user.status = req.body.status; if (user.status === 'suspended') for (const session of Object.values<any>(db.sessions).filter(item => item.userId === user.id)) session.revokedAt = new Date().toISOString(); audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: `user.${user.status}`, resourceType: 'user', resourceId: user.id, metadata: { reason: String(req.body.reason).slice(0, 200) } }); } writeDb(db); res.json({ user: publicUser(user) }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/organizations/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'organizations.manage'); requireRecentAuthentication(context); const organization = db.organizations[req.params.id]; if (!organization) return res.status(404).json({ error: 'Organization not found.' }); const status = String(req.body.status || ''); if (!['active', 'suspended', 'archived'].includes(status)) throw new PlatformError('Unsupported organization status.', 400, 'INVALID_STATUS'); if (!String(req.body.reason || '').trim()) throw new PlatformError('A reason is required.', 400, 'REASON_REQUIRED'); organization.status = status; organization.updatedAt = new Date().toISOString(); audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: `organization.${status}`, resourceType: 'organization', resourceId: organization.id, metadata: { reason: String(req.body.reason).slice(0, 200) } }); writeDb(db); res.json({ organization }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/feature-flags/:key', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'flags.manage'); requireRecentAuthentication(context); const flag = db.featureFlags[req.params.key]; if (!flag) return res.status(404).json({ error: 'Feature flag not found.' }); flag.enabled = Boolean(req.body.enabled); flag.updatedAt = new Date().toISOString(); flag.updatedBy = context.user.id; audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: 'feature_flag.updated', resourceType: 'feature_flag', resourceId: flag.key, metadata: { enabled: flag.enabled } }); writeDb(db); res.json({ flag }); } catch (error) { safeError(res, error); } });
@@ -1474,7 +1375,10 @@ app.delete('/api/business/assets/:id', (req, res) => {
 
 // Resume durable queued export records after a process restart. Jobs retain only
 // tenant/resource references; private content is assembled by the authorized worker.
-try { const startupDb = readDb(); for (const job of Object.values<any>(startupDb.jobs || {}).filter(item => item.type === 'data_export' && item.status === 'queued' && Date.parse(item.runAfter) <= Date.now()).slice(0, 20)) runDataExportJob(job.resourceId); } catch (error) { console.error(JSON.stringify({ event: 'jobs.resume_failed', code: 'DATABASE_UNAVAILABLE' })); }
+try {
+  const queuedExportIds = await persistence.runStandalone(db => Object.values<any>(db.jobs || {}).filter(item => item.type === 'data_export' && item.status === 'queued' && Date.parse(item.runAfter) <= Date.now()).slice(0, 20).map(item => item.resourceId));
+  for (const exportId of queuedExportIds) runDataExportJob(exportId);
+} catch { console.error(JSON.stringify({ event: 'jobs.resume_failed', code: 'DATABASE_UNAVAILABLE' })); }
 
 // Serve frontend
 const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
