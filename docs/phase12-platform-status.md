@@ -12,6 +12,7 @@
 - Structured automations with approved triggers, conditions and actions; no arbitrary code or expressions.
 - Tenant audit logs, platform security events, expiring data exports, reauthenticated scheduled deletion requests and last-owner safeguards.
 - Protected admin APIs for real users, organizations, feature flags, provider credential status, migrations and system readiness.
+- PostgreSQL production persistence with schema checksums, versioned stores, optimistic conflict detection and idempotent JSON import.
 
 ## Explicitly unavailable or readiness-only
 
@@ -19,6 +20,7 @@
 - Billing portal, subscription cancellation/payment-method management and provider invoice downloads.
 - Trial issuance and credit balances.
 - Durable distributed job workers, scheduled automations, retry workers and dead-letter processing.
+- Distributed rate-limit and concurrent-request counters.
 - Custom organization roles, verified domains, service accounts, OAuth connected accounts, SSO and MFA.
 - Persistent favorites, collections, trash recovery and generalized sharing ACLs.
 - Full public APIs beyond usage and translation.
@@ -27,6 +29,8 @@ Unavailable capabilities are not presented as working. The UI uses empty states 
 
 ## Deployment constraint
 
-The inherited repository uses an atomic JSON file store. It is safe for a single process with durable disk but is not a horizontally scalable transactional database. On Vercel, the serverless function uses `/tmp`, which is ephemeral and suitable only for Preview UI/API smoke checks—not production identity, billing or tenant data. Production rollout must remain blocked until the JSON adapter is replaced with a durable transactional database and the in-memory rate limiter/job execution model is replaced with distributed infrastructure.
+Production persistence uses PostgreSQL through versioned, transactional application-store records. PostgreSQL is mandatory on Vercel; JSON is retained only as a local-development fallback. The migration preserves the existing object model and rejects conflicting same-store writes instead of silently overwriting data.
+
+Distributed rate limiting, concurrency counters and background workers remain separate infrastructure requirements. See `docs/postgres-persistence-foundation.md` for migration and rollback instructions.
 
 No destructive migration or data reset is included. Existing objects retain their prior storage keys for Personal Workspace and use `org:<organizationId>` for organization-owned data.

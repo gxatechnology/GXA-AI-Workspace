@@ -21,6 +21,10 @@
     "migration:status": "tsx scripts/platform-migration.ts status",
     "migration:dry-run": "tsx scripts/platform-migration.ts dry-run",
     "migration:apply": "tsx scripts/platform-migration.ts apply",
+    "db:migrate:status": "tsx scripts/postgres-migration.ts status",
+    "db:migrate": "tsx scripts/postgres-migration.ts apply",
+    "db:migrate:json:dry-run": "tsx scripts/postgres-migration.ts import-json-dry-run",
+    "db:migrate:json": "tsx scripts/postgres-migration.ts import-json",
     "security:check": "npm audit --omit=dev"
   },
   "dependencies": {
@@ -34,6 +38,7 @@
     "motion": "^12.23.24",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
+    "pg": "^8.22.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3"
@@ -43,10 +48,14 @@
     "@playwright/test": "^1.62.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/supertest": "^6.0.3",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "pg-mem": "^3.0.14",
+    "supertest": "^7.2.2",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
