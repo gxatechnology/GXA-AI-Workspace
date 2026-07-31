@@ -6,16 +6,13 @@ import {
   Grid, 
   List, 
   Plus, 
-  Eye, 
-  Download, 
   Trash2, 
   Clock, 
   Image, 
   HelpCircle,
-  Loader2,
-  Bookmark,
-  Share2
+  Loader2
 } from 'lucide-react';
+import { authenticatedFetch } from '../../utils/auth';
 
 interface ProjectItem {
   id: string;
@@ -28,10 +25,11 @@ interface ProjectItem {
   previewText?: string;
 }
 
-export default function Projects() {
+export default function Projects({ currentUser }: { currentUser: any }) {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filterType, setFilterType] = useState<string>('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState('');
@@ -40,17 +38,11 @@ export default function Projects() {
 
   // Fetch real database projects
   const fetchProjects = async () => {
-    const savedUser = localStorage.getItem('gxa_user');
-    if (!savedUser) { setLoading(false); setLoadError('Sign in to load your projects.'); return; }
+    if (!currentUser || currentUser.guest) { setLoading(false); setLoadError('Sign in to load your projects.'); return; }
     setLoading(true);
     setLoadError('');
     try {
-      const user = JSON.parse(savedUser);
-      const res = await fetch('/api/projects', {
-        headers: {
-          'Authorization': `Bearer ${user.sessionToken}`
-        }
-      });
+      const res = await authenticatedFetch(currentUser, '/api/projects');
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Projects could not be loaded.');
       setProjects(data.projects || []);
@@ -64,20 +56,17 @@ export default function Projects() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [currentUser?.id]);
 
   const createBlankDraft = async () => {
-    const savedUser = localStorage.getItem('gxa_user');
-    if (!savedUser || creating) return;
+    if (!currentUser || currentUser.guest || creating) return;
     setCreating(true);
     setActionError('');
     try {
-      const user = JSON.parse(savedUser);
-      const res = await fetch('/api/projects', {
+      const res = await authenticatedFetch(currentUser, '/api/projects', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.sessionToken}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           name: 'Untitled Draft',
@@ -90,28 +79,22 @@ export default function Projects() {
       await fetchProjects();
     } catch (err) {
       console.error(err);
-      setActionError('The draft could not be created. Try again.');
+      setActionError(err instanceof Error ? `${err.message} Your existing projects were not changed.` : 'The draft could not be created. Try again.');
     } finally {
       setCreating(false);
     }
   };
 
   const deleteProject = async (id: string) => {
-    const savedUser = localStorage.getItem('gxa_user');
-    if (!savedUser) return;
+    if (!currentUser || currentUser.guest || !window.confirm('Move this project to Trash?')) return;
+    setActionError('');
     try {
-      const user = JSON.parse(savedUser);
-      const res = await fetch(`/api/projects/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${user.sessionToken}`
-        }
-      });
-      if (res.ok) {
-        setProjects(prev => prev.filter(p => p.id !== id));
-      }
+      const res = await authenticatedFetch(currentUser, `/api/projects/${id}`, { method: 'DELETE' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Project could not be moved to Trash.');
+      setProjects(prev => prev.filter(p => p.id !== id));
     } catch (err) {
-      console.error(err);
+      setActionError(err instanceof Error ? `${err.message} Your project is unchanged.` : 'Project could not be moved to Trash.');
     }
   };
 
@@ -122,10 +105,10 @@ export default function Projects() {
   const totalCount = projects.length;
 
   const folders = [
-    { name: 'Active Drafts', count: draftsCount },
-    { name: 'Published Work', count: publishedCount },
-    { name: 'Shared Documents', count: sharedCount },
-    { name: 'All Workspace Outputs', count: totalCount }
+    { name: 'Active Drafts', count: draftsCount, status: 'Draft' },
+    { name: 'Published Work', count: publishedCount, status: 'Published' },
+    { name: 'Shared Documents', count: sharedCount, status: 'Shared' },
+    { name: 'All Workspace Outputs', count: totalCount, status: 'All' }
   ];
 
   const filteredProjects = projects.filter(project => {
@@ -135,7 +118,8 @@ export default function Projects() {
     // Support loose type matches for backward compatibility with db entries
     const projType = project.type || 'Document';
     const matchesFilter = filterType === 'All' || projType.toLowerCase() === filterType.toLowerCase();
-    return matchesSearch && matchesFilter;
+    const matchesStatus = statusFilter === 'All' || project.status === statusFilter;
+    return matchesSearch && matchesFilter && matchesStatus;
   });
 
   return (
@@ -158,14 +142,14 @@ export default function Projects() {
       {/* Folders Section */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 text-left">
         {folders.map((folder, i) => (
-          <div key={i} className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800 p-4 rounded-xl shadow-xs hover:border-teal-500/40 dark:hover:border-teal-500/40 transition group cursor-pointer">
+          <button type="button" key={i} aria-pressed={statusFilter === folder.status} onClick={() => setStatusFilter(folder.status)} className={`bg-white dark:bg-zinc-900 border p-4 rounded-xl shadow-xs hover:border-teal-500/40 dark:hover:border-teal-500/40 transition group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${statusFilter === folder.status ? 'border-teal-500' : 'border-slate-200/60 dark:border-zinc-800'}`}>
             <div className="flex items-center justify-between">
               <Folder className="h-8 w-8 text-teal-500/80 group-hover:scale-105 transition" />
               <span className="text-[10px] font-bold bg-slate-50 dark:bg-zinc-800 px-2 py-0.5 rounded-full text-slate-500 dark:text-zinc-400">{folder.count} items</span>
             </div>
             <h4 className="text-xs font-bold text-slate-900 dark:text-white mt-3">{folder.name}</h4>
             <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">{folder.count ? 'Based on saved project data' : 'No activity yet'}</p>
-          </div>
+          </button>
         ))}
       </div>
 

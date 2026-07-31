@@ -1,4 +1,4 @@
-import type { PlanId } from '../../shared/platformRegistry.js';
+import { PLAN_REGISTRY, type PlanId } from '../../shared/platformRegistry.js';
 import type { AIEnvironment } from './config.js';
 import { resolveToolRoute } from './registry.js';
 import { GeminiAdapter } from './providers/gemini.js';
@@ -30,7 +30,8 @@ export class AIService {
     const messages = input.messages || [{ role: 'user' as const, content: input.prompt || '' }];
     const allMessages: AIMessage[] = [{ role: 'system', content: input.systemInstruction }, ...messages];
     const inputCharacters = allMessages.reduce((sum, message) => sum + (typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length), 0);
-    if (inputCharacters > route.inputLimit) throw new AIProviderError('AI_INPUT_LIMIT_EXCEEDED', 413, false);
+    const planLimits = PLAN_REGISTRY[input.planId].limits;
+    if (inputCharacters > Math.min(route.inputLimit, Number(planLimits.max_input_characters || route.inputLimit))) throw new AIProviderError('AI_INPUT_LIMIT_EXCEEDED', 413, false);
     const routing = {
       order: this.config.openRouterProviderOrder,
       allowFallbacks: this.config.openRouterAllowFallbacks && route.fallbacks.length > 0,
@@ -40,7 +41,7 @@ export class AIService {
       sort: this.config.openRouterSort,
       maxPrice: { prompt: this.config.openRouterMaxPromptPrice, completion: this.config.openRouterMaxCompletionPrice },
     };
-    return { route, providerRequest: { requestId: input.requestId, tool: input.tool, modelIds: [route.primary.providerModelId, ...(routing.allowFallbacks ? route.fallbacks.map(model => model.providerModelId) : [])], messages: allMessages, temperature: route.temperature, maxOutputTokens: Math.min(route.outputLimit, route.primary.outputLimit), structuredOutput: route.structuredOutput, timeoutMs: route.timeoutMs, routing, signal: input.signal } };
+    return { route, providerRequest: { requestId: input.requestId, tool: input.tool, modelIds: [route.primary.providerModelId, ...(routing.allowFallbacks ? route.fallbacks.map(model => model.providerModelId) : [])], messages: allMessages, temperature: route.temperature, maxOutputTokens: Math.min(route.outputLimit, route.primary.outputLimit, Number(planLimits.max_output_tokens || route.outputLimit)), structuredOutput: route.structuredOutput, timeoutMs: route.timeoutMs, routing, signal: input.signal } };
   }
 
   private activeAdapter() {
@@ -75,7 +76,7 @@ export class AIService {
 
 export function safeAIError(error: unknown) {
   const platform = error as any;
-  if (platform && ['AUTHENTICATION_REQUIRED', 'AUTHORIZATION_DENIED', 'ENTITLEMENT_REQUIRED', 'QUOTA_REACHED'].includes(platform.code) && Number.isInteger(platform.status)) {
+  if (platform && ['AUTHENTICATION_REQUIRED', 'AUTHORIZATION_DENIED', 'ENTITLEMENT_REQUIRED', 'PLAN_LIMIT_REACHED'].includes(platform.code) && Number.isInteger(platform.status)) {
     return { status: platform.status, code: platform.code, message: String(platform.message || 'The request is not permitted.') };
   }
   if (error instanceof AIProviderError) {

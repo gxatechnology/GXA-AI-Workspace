@@ -4,7 +4,10 @@ import { WorkspaceId } from '../types';
 import { PublicPlan, UpgradeRequest } from '../types/pricing';
 import UniversalHome from './workspaces/UniversalHome';
 
-const Dashboard = lazy(() => import('./workspaces/Dashboard'));
+const Dashboard = lazy(() => import('./workspaces/UserDashboard'));
+const Profile = lazy(() => import('./workspaces/Profile'));
+const AccountSettings = lazy(() => import('./workspaces/AccountSettings'));
+const AccountPlan = lazy(() => import('./workspaces/AccountPlan'));
 const AIWriting = lazy(() => import('./workspaces/AIWriting'));
 const Grammar = lazy(() => import('./workspaces/Grammar'));
 const Paraphrasing = lazy(() => import('./workspaces/Paraphrasing'));
@@ -40,8 +43,9 @@ export default function WorkspaceContent(props: Props) {
   let content: React.ReactNode;
   switch (activeWorkspace) {
     case 'home': content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />; break;
-    case 'dashboard': content = <Dashboard onSelectWorkspace={onSelectWorkspace} onSelectTool={workspace => onSelectWorkspace(workspace)} sharedText={sharedText} setSharedText={setSharedText} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium workspace features', 'dashboard')} currentUser={currentUser} />; break;
-    case 'settings': content = <EnterprisePlatform currentUser={currentUser} initialSection="security" onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'dashboard': content = <Dashboard currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'profile': content = <Profile currentUser={currentUser} />; break;
+    case 'settings': content = <AccountSettings currentUser={currentUser} />; break;
     case 'ai-writing': content = <AIWriting initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium writing templates', 'ai-writing')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'grammar': content = <Grammar sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('grammar.advanced', 'advanced grammar suggestions', 'grammar')} />; break;
     case 'paraphrasing': content = <Paraphrasing sharedText={sharedText} setSharedText={setSharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('paraphraser.premium_modes', 'premium paraphrasing modes', 'paraphrasing')} />; break;
@@ -55,23 +59,23 @@ export default function WorkspaceContent(props: Props) {
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'pdf-intelligence')} />; break;
     case 'ocr': content = <OCR initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'ocr')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'documents': content = <Documents currentUser={currentUser} />; break;
-    case 'prompts': content = <PromptEngineering />; break;
+    case 'prompts': content = <PromptEngineering currentUser={currentUser} />; break;
     case 'templates': content = <Templates />; break;
     case 'collaboration': content = <EnterprisePlatform currentUser={currentUser} initialSection="members" onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'billing': content = <EnterprisePlatform currentUser={currentUser} initialSection="billing" onSelectWorkspace={onSelectWorkspace} />; break;
+    case 'billing': content = <AccountPlan currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} />; break;
     case 'pricing': content = <Pricing currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} onPlanSelected={onPlanSelected} />; break;
     case 'administration': content = <EnterprisePlatform currentUser={currentUser} initialSection="admin" onSelectWorkspace={onSelectWorkspace} />; break;
     case 'platform': content = <EnterprisePlatform currentUser={currentUser} onSelectWorkspace={onSelectWorkspace} />; break;
     case 'all-tools': content = <AllTools onSelectWorkspace={onSelectWorkspace} onOpenUpgradeModal={upgrade('writer.premium_templates', 'premium tools', 'all-tools')} />; break;
-    case 'projects': content = <Projects />; break;
-    case 'trash': content = <TrashView />; break;
-    case 'storage': content = <StorageView />; break;
-    case 'favorites': content = <FavoritesView />; break;
+    case 'projects': content = <Projects currentUser={currentUser} />; break;
+    case 'trash': content = <TrashView currentUser={currentUser} />; break;
+    case 'storage': content = <StorageView currentUser={currentUser} />; break;
+    case 'favorites': content = <FavoritesView currentUser={currentUser} />; break;
     case 'images': content = <ImagesView initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('media.premium', 'premium media tools', 'images')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'history': content = <HistoryView />; break;
-    case 'pinned': content = <PinnedView />; break;
+    case 'history': content = <HistoryView currentUser={currentUser} />; break;
+    case 'pinned': content = <PinnedView currentUser={currentUser} />; break;
     case 'shared': content = <EnterprisePlatform currentUser={currentUser} initialSection="members" onSelectWorkspace={onSelectWorkspace} />; break;
-    case 'collections': content = <CollectionsView />; break;
+    case 'collections': content = <CollectionsView currentUser={currentUser} />; break;
     default: content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />;
   }
   return <Suspense fallback={<div className="flex min-h-80 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-teal-500" aria-label="Loading workspace" /></div>}>{content}</Suspense>;

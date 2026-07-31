@@ -33,7 +33,7 @@ export function normalizeMediaPlan(value: unknown): MediaPlan {
 
 export function assertMediaEntitlement(tool: MediaToolDefinition, plan: MediaPlan) {
   if (PLAN_RANK[plan] < PLAN_RANK[tool.requiredPlan]) {
-    const label = tool.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro';
+    const label = tool.requiredPlan === 'pro_plus' ? 'Pro' : 'Starter';
     throw new MediaValidationError(`${tool.name} requires ${label}. Your image and prompt are preserved.`, 403, 'PREMIUM_MEDIA_TOOL');
   }
 }

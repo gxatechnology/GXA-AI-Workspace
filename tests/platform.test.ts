@@ -25,9 +25,9 @@ test('platform migration is additive, password-safe and idempotent', () => {
   const preview = applyPlatformMigration(original, { dryRun: true });
   assert.equal(original.schemaVersion, undefined);
   assert.deepEqual(original.projects.untouched, [{ id: 'p1' }]);
-  assert.equal(preview.toVersion, 13);
+  assert.equal(preview.toVersion, 14);
   const applied = applyPlatformMigration(original);
-  assert.equal(applied.db.schemaVersion, 13);
+  assert.equal(applied.db.schemaVersion, 14);
   assert.notEqual(applied.db.users['owner@example.com'].password, 'long-enough-password');
   assert.ok(applied.db.users['owner@example.com'].password.startsWith('scrypt$'));
   assert.equal(verifyPassword('long-enough-password', applied.db.users['owner@example.com'].password), true);
@@ -94,7 +94,7 @@ test('API keys are one-time scoped credentials and usage reservations are idempo
 
   const reservation = reserveUsage(db, context, 'api_requests_month', 900, 'request-1');
   assert.equal(reserveUsage(db, context, 'api_requests_month', 900, 'request-1').id, reservation.id);
-  assert.throws(() => reserveUsage(db, context, 'api_requests_month', 101, 'request-2'), /quota/i);
+  assert.throws(() => reserveUsage(db, context, 'api_requests_month', 101, 'request-2'), (error: any) => error.code === 'PLAN_LIMIT_REACHED');
   const event = commitUsage(db, reservation.id, 800);
   assert.equal(event.quantity, 800);
   assert.equal(commitUsage(db, reservation.id).id, event.id);

@@ -1,0 +1,60 @@
+[1mdiff --git a/.env.example b/.env.example[m
+[1mindex 6b14109..36fb9f4 100644[m
+[1m--- a/.env.example[m
+[1m+++ b/.env.example[m
+[36m@@ -8,6 +8,13 @@[m [mAI_FALLBACK_PROVIDER=none[m
+ OPENROUTER_SITE_URL=[m
+ OPENROUTER_APP_NAME=GXA AI Workspace[m
+ [m
+[32m+[m[32m# Optional transactional email for password reset and email verification[m
+[32m+[m[32mRESEND_API_KEY=[m
+[32m+[m[32mAUTH_EMAIL_FROM=[m
+[32m+[m
+[32m+[m[32m# Canonical public application origin[m
+[32m+[m[32mAPP_ORIGIN=https://your-production-domain.example[m
+[32m+[m
+ # Optional server-controlled OpenRouter routing policy[m
+ OPENROUTER_PROVIDER_ORDER=[m
+ OPENROUTER_ALLOW_FALLBACKS=true[m
+[36m@@ -18,16 +25,14 @@[m [mOPENROUTER_MAX_PROMPT_PRICE=[m
+ OPENROUTER_MAX_COMPLETION_PRICE=[m
+ AI_MAX_CONCURRENT_REQUESTS=3[m
+ [m
+[31m-# Retained direct-provider credentials. Keys are required only when their[m
+[31m-# corresponding enabled flag is true.[m
+[32m+[m[32m# Retained direct-provider credentials[m
+[32m+[m[32m# Keys are required only when their corresponding enabled flag is true[m
+ OPENAI_API_KEY=[m
+ GEMINI_API_KEY=[m
+ [m
+[31m-# Canonical public application origin; comma-separate trusted origins if required[m
+[31m-APP_ORIGIN=https://your-production-domain.example[m
+[31m-[m
+[31m-# Production persistence (server only). Supabase's pooled URL belongs in[m
+[31m-# DATABASE_URL; schema migration and one-time imports use DIRECT_DATABASE_URL.[m
+[32m+[m[32m# Production persistence[m
+[32m+[m[32m# Supabase pooled URL belongs in DATABASE_URL[m
+[32m+[m[32m# Schema migrations and one-time imports use DIRECT_DATABASE_URL[m
+ PERSISTENCE_PROVIDER=postgres[m
+ DATABASE_URL=[m
+ DIRECT_DATABASE_URL=[m
+[36m@@ -35,13 +40,15 @@[m [mDATABASE_SSL=require[m
+ DATABASE_POOL_MAX=5[m
+ DATABASE_POOL_TIMEOUT_MS=10000[m
+ [m
+[31m-# Local-development JSON fallback only. Never use JSON persistence on Vercel.[m
+[32m+[m[32m# Local-development JSON fallback only[m
+[32m+[m[32m# Never use JSON persistence on Vercel[m
+ GXA_DB_FILE=./db.local.json[m
+ [m
+ # Required in production to encrypt recoverable webhook signing secrets[m
+ PLATFORM_ENCRYPTION_KEY=[m
+ [m
+[31m-# Razorpay server credentials. All three are required to enable checkout.[m
+[32m+[m[32m# Razorpay server credentials[m
+[32m+[m[32m# All three are required to enable checkout[m
+ RAZORPAY_KEY_ID=[m
+ RAZORPAY_KEY_SECRET=[m
+[31m-RAZORPAY_WEBHOOK_SECRET=[m
+[32m+[m[32mRAZORPAY_WEBHOOK_SECRET=[m
+\ No newline at end of file[m

@@ -122,7 +122,7 @@ test('locked templates enter the centralized upgrade flow without losing work', 
   await page.getByRole('button', { name: 'pro', exact: true }).click();
   await page.getByPlaceholder('Search templates').fill('Google Ads Copy');
   await page.getByRole('button', { name: 'Preview' }).click();
-  await page.getByRole('button', { name: 'Compare plans for Pro' }).click();
+  await page.getByRole('button', { name: 'Compare plans for Starter' }).click();
   await expect(page.getByRole('dialog')).toContainText(/upgrade|plan/i);
   await page.keyboard.press('Escape');
   await expect(page.getByLabel('Writing instructions')).toHaveValue('Preserve this draft');
@@ -130,7 +130,7 @@ test('locked templates enter the centralized upgrade flow without losing work', 
 
 test('prompt library and project actions explain guest behavior', async ({ page }) => {
   await openWriter(page);
-  await page.getByRole('button', { name: 'Prompt Library' }).click();
+  await page.getByRole('button', { name: 'Prompt Library', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Prompt Library' })).toContainText('Sign in to save prompts');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'New Project' }).click();
@@ -141,11 +141,11 @@ test('authenticated prompt saving and project assignment use real workspace stat
   await authenticate(page);
   await openWriter(page);
   await expect(page.getByText(/Autosave ready|Saved/)).toBeVisible();
-  await page.getByRole('button', { name: 'Prompt Library' }).click();
+  await page.getByRole('button', { name: 'Prompt Library', exact: true }).click();
   await page.getByLabel('Prompt title').fill('Verified voice rules');
   await page.getByLabel('Reusable instructions').fill('Use concise sentences and preserve supplied numbers.');
   await page.getByRole('button', { name: 'Save prompt' }).click();
-  await page.getByRole('button', { name: 'Prompt Library' }).click();
+  await page.getByRole('button', { name: 'Prompt Library', exact: true }).click();
   await expect(page.getByText('Verified voice rules')).toBeVisible();
   await page.getByRole('button', { name: 'Use in this draft' }).click();
   await page.getByRole('button', { name: 'New Project' }).click();
@@ -156,10 +156,10 @@ test('authenticated prompt saving and project assignment use real workspace stat
 
 test('guest-only routes are guarded and authentication errors are associated', async ({ page }) => {
   await page.goto('/#/projects');
-  await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await page.getByRole('button', { name: 'Log in' }).click();
   await expect(page.getByRole('alert')).toContainText('Please enter your email address.');
-  await expect(page.getByLabel('Email Address')).toHaveAttribute('aria-describedby', 'auth-form-error');
+  await expect(page.getByLabel('Email')).toHaveAttribute('aria-describedby', 'auth-form-error');
   await page.goto('/#/ai-writing');
   await expect(page.getByRole('heading', { name: 'AI Writer', level: 1 })).toBeVisible();
 });

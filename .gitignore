@@ -12,3 +12,6 @@ test-results/
 .DS_Store
 db.*.json
 *.tmp
+
+.vercel
+.env*

@@ -132,10 +132,10 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
   try {
     const initialStatus = await migrationStatus(pool);
     assert.deepEqual(initialStatus.applied, []);
-    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation']);
+    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
     const firstMigration = await runSchemaMigrations(pool);
     const secondMigration = await runSchemaMigrations(pool);
-    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation']);
+    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
     assert.deepEqual(secondMigration.applied, []);
 
     const password = hashPassword('migration-password', 'abcdefabcdefabcdefabcdefabcdefab');

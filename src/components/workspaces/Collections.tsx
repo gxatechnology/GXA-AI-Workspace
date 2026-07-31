@@ -1,3 +1,1 @@
-import React from 'react';
-import EmptyWorkspaceState from './EmptyWorkspaceState';
-export default function Collections() { return <EmptyWorkspaceState title="No collections yet" description="Collections are not persisted by the current backend, so this screen does not simulate creating or saving them." />; }
+import React from 'react'; import ResourceView from './ResourceView'; export default function Collections({ currentUser }: { currentUser?: any }) { return <ResourceView currentUser={currentUser} title="Collections" description="Saved resources grouped by your collection labels." endpoint="/api/library?view=collections" />; }

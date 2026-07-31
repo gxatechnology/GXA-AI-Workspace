@@ -173,7 +173,7 @@ export default function BusinessStudio({
       }
       setOutput(body.result.text);
       setWarnings(body.result.warnings || []);
-      setStatus(`Generated successfully · ${body.usage.used} of ${body.usage.limit || 'unlimited'} daily requests used.`);
+      setStatus('Generated successfully.');
     } catch {
       setError('The service could not be reached. Your brief is preserved.');
     } finally {

@@ -25,5 +25,21 @@ export const storedUser = (): AuthenticatedUser | null => {
 export async function authenticatedFetch(user: AuthenticatedUser | null | undefined, input: RequestInfo | URL, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   for (const [key, value] of Object.entries(authHeaders(user))) headers.set(key, value);
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, credentials: 'same-origin' });
+}
+
+export function installPlanLimitInterceptor() {
+  if (typeof window === 'undefined' || (window.fetch as any).__gxaPlanLimitAware) return () => undefined;
+  const original = window.fetch.bind(window);
+  const wrapped: typeof window.fetch = async (input, init) => {
+    const response = await original(input, init);
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (response.status === 429 && (url.startsWith('/api/') || url.startsWith(window.location.origin + '/api/'))) {
+      void response.clone().json().then(body => { if (body?.code === 'PLAN_LIMIT_REACHED') window.dispatchEvent(new CustomEvent('gxa:plan-limit')); }).catch(() => undefined);
+    }
+    return response;
+  };
+  (wrapped as any).__gxaPlanLimitAware = true;
+  window.fetch = wrapped;
+  return () => { if (window.fetch === wrapped) window.fetch = original; };
 }

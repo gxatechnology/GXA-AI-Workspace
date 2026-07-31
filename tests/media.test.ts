@@ -26,8 +26,8 @@ test('plan normalization and entitlements are backend-controlled', () => {
   const pro = MEDIA_TOOLS.find((tool) => tool.id === 'background-remove')!;
   const plus = MEDIA_TOOLS.find((tool) => tool.id === 'ocr-id')!;
   assert.doesNotThrow(() => assertMediaEntitlement(free, 'free'));
-  assert.throws(() => assertMediaEntitlement(pro, 'free'), /requires Pro/);
-  assert.throws(() => assertMediaEntitlement(plus, 'pro'), /requires Pro Plus/);
+  assert.throws(() => assertMediaEntitlement(pro, 'free'), /requires Starter/);
+  assert.throws(() => assertMediaEntitlement(plus, 'pro'), /requires Pro/);
   assert.doesNotThrow(() => assertMediaEntitlement(plus, 'pro_plus'));
 });
 

@@ -88,10 +88,10 @@ for (const route of ['home', 'paraphrasing', 'grammar', 'ai-chat', 'ai-writing',
 test('login and register surfaces inherit the persisted dark theme', async ({ page }) => {
   await startWithTheme(page, 'dark');
   await page.goto('/#/settings');
-  await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.getByRole('button', { name: 'Sign up free' }).click();
-  await expect(page.getByRole('heading', { name: 'Create your Account' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create an account' }).click();
+  await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
   await expect(page.locator('html')).toHaveClass(/dark/);
 });
 
@@ -100,11 +100,11 @@ test('authenticated Settings and Billing surfaces inherit the document dark them
   await authenticate(page);
   await openRoute(page, 'settings');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('button', { name: 'Security' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Change password' })).toBeVisible();
   await openRoute(page, 'billing');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('button', { name: 'Usage & Billing' })).toBeVisible();
-  await expect(page.getByText('Current plan')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plan', level: 1 })).toBeVisible();
+  await expect(page.getByText('Current plan', { exact: true })).toBeVisible();
 });
 
 test('upgrade dialog inherits dark tokens and closes with Escape', async ({ page }) => {

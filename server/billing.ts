@@ -27,12 +27,18 @@ export function strictPlanKey(value: unknown): PlanId {
 
 export function publicPlan(plan: PlanDefinition) {
   const monthlyPrice = plan.monthlyPriceMinor === null ? null : plan.monthlyPriceMinor / 100;
+  const limitFeatures = [
+    `${Number(plan.limits.ai_requests_month || 0).toLocaleString('en-IN')} AI requests per month`,
+    `${Number(plan.limits.project_limit || 0).toLocaleString('en-IN')} projects`,
+    `${Number(plan.limits.saved_document_limit || 0).toLocaleString('en-IN')} saved documents`,
+    `${Number(plan.limits.available_ai_models || 0)} AI ${Number(plan.limits.available_ai_models || 0) === 1 ? 'model' : 'models'}`,
+  ];
   return {
     id: plan.key, key: plan.key, name: plan.name, displayName: plan.displayName, description: plan.description,
     currency: plan.currency, monthlyPrice, displayPrice: plan.key === 'team' ? 'Contact Sales' : plan.key === 'enterprise' ? 'Custom Pricing' : `₹${monthlyPrice}`,
     billingLabel: plan.billingType === 'fixed' ? '/month' : plan.billingType === 'free' ? 'Free' : '',
     billingType: plan.billingType, billingIntervals: [...plan.billingIntervals], contactSales: plan.contactSales,
-    recommended: plan.recommended, rank: plan.rank, features: plan.entitlements.map(key => PLAN_FEATURE_LABELS[key]),
+    recommended: plan.recommended, rank: plan.rank, features: [...limitFeatures, ...plan.entitlements.map(key => PLAN_FEATURE_LABELS[key])],
     entitlements: [...plan.entitlements], limits: { ...plan.limits },
   };
 }
@@ -107,6 +113,7 @@ export function currentPlanSummary(context: TenantContext, db?: any) {
   const subscription = state.subscription;
   return {
     plan: publicPlan(plan), currentPlanKey: plan.key, subscriptionStatus: state.status,
+    activationDate: subscription?.activatedAt || subscription?.currentPeriodStart || context.user.createdAt || null,
     currentPeriodStart: subscription?.currentPeriodStart || null, currentPeriodEnd: subscription?.currentPeriodEnd || null,
     cancelAtPeriodEnd: Boolean(subscription?.cancelAtPeriodEnd),
     entitlements: Object.fromEntries(Object.keys(FEATURE_PLAN_REQUIREMENTS).map(featureKey => [featureKey, planIncludesFeature(plan.key, featureKey)])),

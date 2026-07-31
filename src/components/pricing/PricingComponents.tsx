@@ -31,11 +31,11 @@ export function PlanCard({ plan, currentPlanKey, disabled = false, badge, onSele
 }
 
 export function PricingGrid({ plans, currentPlanKey, onSelect, disabledPlanKeys = [] }: { plans: PublicPlan[]; currentPlanKey?: PlanKey | null; onSelect: (plan: PublicPlan) => void | Promise<void>; disabledPlanKeys?: PlanKey[] }) {
-  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">{plans.map(plan => <PlanCard key={plan.key} plan={plan} currentPlanKey={currentPlanKey} disabled={disabledPlanKeys.includes(plan.key)} onSelect={onSelect} />)}</div>;
+  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{plans.map(plan => <PlanCard key={plan.key} plan={plan} currentPlanKey={currentPlanKey} disabled={disabledPlanKeys.includes(plan.key)} onSelect={onSelect} />)}</div>;
 }
 
 export function PricingSkeleton() {
-  return <div aria-label="Loading plans" className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-80 animate-pulse rounded-3xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><div className="h-5 w-24 rounded bg-slate-200 dark:bg-zinc-800" /><div className="mt-4 h-8 w-32 rounded bg-slate-100 dark:bg-zinc-800" /><div className="mt-8 space-y-3">{Array.from({ length: 5 }, (__, row) => <div key={row} className="h-3 rounded bg-slate-100 dark:bg-zinc-800" />)}</div></div>)}</div>;
+  return <div aria-label="Loading plans" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <div key={index} className="h-80 animate-pulse rounded-3xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><div className="h-5 w-24 rounded bg-slate-200 dark:bg-zinc-800" /><div className="mt-4 h-8 w-32 rounded bg-slate-100 dark:bg-zinc-800" /><div className="mt-8 space-y-3">{Array.from({ length: 5 }, (__, row) => <div key={row} className="h-3 rounded bg-slate-100 dark:bg-zinc-800" />)}</div></div>)}</div>;
 }
 
 export function PricingErrorState({ message, onRetry, retrying = false }: { message: string; onRetry: () => void; retrying?: boolean }) {

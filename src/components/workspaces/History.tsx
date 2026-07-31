@@ -1,3 +1,1 @@
-import React from 'react';
-import EmptyWorkspaceState from './EmptyWorkspaceState';
-export default function History() { return <EmptyWorkspaceState title="No workspace history yet" description="Saved chat and tool histories are shown in their respective workspaces after real activity. No example activity is preloaded." />; }
+import React from 'react'; import ResourceView from './ResourceView'; export default function History({ currentUser }: { currentUser?: any }) { return <ResourceView currentUser={currentUser} title="History" description="Your saved AI and conversation activity." endpoint="/api/history" />; }

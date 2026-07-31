@@ -58,6 +58,8 @@ import {
   computeDiff, 
   detectLanguage, 
 } from './grammarUtils';
+import { loadWorkspaceState, saveWorkspaceState } from '../../utils/workspaceState';
+import { authenticatedFetch } from '../../utils/auth';
 
 interface GrammarProps {
   sharedText?: string;
@@ -92,7 +94,7 @@ export default function Grammar({
   const [showFixAllConfirm, setShowFixAllConfirm] = useState<boolean>(false);
 
   // Auto Save status
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle' | 'error'>('idle');
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -146,6 +148,7 @@ export default function Grammar({
       compareMode: true
     }
   });
+  const [adminSaveMessage, setAdminSaveMessage] = useState('');
 
   // Default Writing Scores
   const [scores, setScores] = useState<WritingScores>({
@@ -204,6 +207,7 @@ export default function Grammar({
     try {
       const sysConfig = await fetchSystemConfig();
       setConfig(sysConfig);
+      if (currentUser?.role === 'SuperAdmin' && sysConfig.grammar_admin_config) setAdminConfig(sysConfig.grammar_admin_config);
       
       const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
       if (user) {
@@ -223,24 +227,12 @@ export default function Grammar({
   // Initial load
   useEffect(() => {
     loadLimitsData();
-    // Load local history from localStorage
-    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-    const savedHistory = localStorage.getItem('gxa_grammar_history');
-    if (savedHistory && user && !user.guest && user.role !== 'Guest') {
-      try {
-        setHistoryItems(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error('Error loading history:', e);
-      }
-    }
+    const user = currentUser && !currentUser.guest ? currentUser : null;
+    if (user) void loadWorkspaceState<{ draft?: string; history?: HistoryItem[] }>(user, 'grammar_checker').then(saved => {
+      if (Array.isArray(saved?.history)) setHistoryItems(saved.history);
+      if (!sharedText && saved?.draft) setLocalText(saved.draft);
+    }).catch(() => setAutoSaveStatus('error'));
 
-    // Load admin config if saved
-    const savedAdmin = localStorage.getItem('gxa_grammar_admin_config');
-    if (savedAdmin) {
-      try {
-        setAdminConfig(JSON.parse(savedAdmin));
-      } catch (e) {}
-    }
   }, [currentUser]);
 
   // Sync sharedText on load
@@ -277,12 +269,11 @@ export default function Grammar({
     // Auto save triggers
     setAutoSaveStatus('saving');
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      setAutoSaveStatus('saved');
-      // Save current draft
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_draft', localText);
-      setTimeout(() => setAutoSaveStatus('idle'), 2000);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const user = currentUser && !currentUser.guest ? currentUser : null;
+      if (!user) { setAutoSaveStatus('idle'); return; }
+      try { await saveWorkspaceState(user, 'grammar_checker', { draft: localText, history: historyItems }); setAutoSaveStatus('saved'); setTimeout(() => setAutoSaveStatus('idle'), 2000); }
+      catch { setAutoSaveStatus('error'); }
     }, 1500);
 
     // Debounced real-time analysis
@@ -304,6 +295,7 @@ export default function Grammar({
     if (!localText.trim() || loading) return;
     if (isExceededLimit || isDailyExceeded) {
       setErrorState('limit-exceeded');
+      if (isDailyExceeded) window.dispatchEvent(new CustomEvent('gxa:plan-limit'));
       return;
     }
     
@@ -393,7 +385,7 @@ export default function Grammar({
 
       setHistoryItems(prev => {
         const next = [historyItem, ...prev].slice(0, 30);
-        if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+        if (user && !user.guest && user.role !== 'Guest') void saveWorkspaceState(user, 'grammar_checker', { draft: localText, history: next });
         return next;
       });
 
@@ -635,8 +627,8 @@ export default function Grammar({
   const toggleFavoriteHistory = (id: string) => {
     setHistoryItems(prev => {
       const next = prev.map(item => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item);
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+      const user = currentUser && !currentUser.guest ? currentUser : null;
+      if (user) void saveWorkspaceState(user, 'grammar_checker', { draft: localText, history: next });
       return next;
     });
   };
@@ -644,8 +636,8 @@ export default function Grammar({
   const deleteHistoryItem = (id: string) => {
     setHistoryItems(prev => {
       const next = prev.filter(item => item.id !== id);
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_grammar_history', JSON.stringify(next));
+      const user = currentUser && !currentUser.guest ? currentUser : null;
+      if (user) void saveWorkspaceState(user, 'grammar_checker', { draft: localText, history: next });
       return next;
     });
   };
@@ -658,9 +650,13 @@ export default function Grammar({
   };
 
   // Admin panel rule toggles
-  const saveAdminConfig = (updated: AdminConfig) => {
+  const saveAdminConfig = async (updated: AdminConfig) => {
+    const previous = adminConfig;
     setAdminConfig(updated);
-    localStorage.setItem('gxa_grammar_admin_config', JSON.stringify(updated));
+    setAdminSaveMessage('Saving…');
+    const response = await authenticatedFetch(currentUser, '/api/admin/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grammar_admin_config: updated }) });
+    if (!response.ok) { const body = await response.json().catch(() => ({})); setAdminConfig(previous); setAdminSaveMessage(body.error || 'Configuration could not be saved.'); return; }
+    setAdminSaveMessage('Saved to workspace configuration.');
   };
 
   // Highlight word level diff
@@ -748,6 +744,7 @@ export default function Grammar({
               <X className="h-4 w-4" />
             </button>
           </div>
+          {adminSaveMessage && <p role="status" className="mb-4 text-xs font-bold text-slate-500 dark:text-zinc-300">{adminSaveMessage}</p>}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
             {/* Rule selections */}
             <div className="space-y-3">
@@ -844,7 +841,7 @@ export default function Grammar({
                 {errorState === 'no-internet' && 'Please verify your internet connection settings and try again.'}
                 {errorState === 'unsupported-language' && `The grammar engine detected ${detectedLang}, which is currently restricted in Admin configs.`}
                 {errorState === 'unsupported-file' && 'Upload a TXT or Markdown file. Your existing document is unchanged.'}
-                {errorState === 'limit-exceeded' && 'You have reached the free processing threshold. Please upgrade to Pro to unlock unlimited usage.'}
+                {errorState === 'limit-exceeded' && 'You have reached the limit of your current plan. Your writing is preserved.'}
                 {errorState === 'large-file' && 'The document exceeds 35,000 characters. Please break it into smaller chapters.'}
                 {errorState === 'ai-unavailable' && 'The network model could not finalize this audit. Please trigger retry manually.'}
                 {errorState === 'timeout' && 'The remote server took too long. Let us retry.'}
@@ -890,6 +887,7 @@ export default function Grammar({
                     <Check className="h-3 w-3" /> Auto-saved
                   </span>
                 )}
+                {autoSaveStatus === 'error' && <span className="text-[10px] font-bold text-rose-600">Not saved — try again</span>}
               </div>
 
               {/* Undo / Redo controls */}

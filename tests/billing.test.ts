@@ -49,7 +49,7 @@ async function pendingCheckout(planKey: 'pro' | 'pro_plus' = 'pro') {
 
 test('canonical plan registry exposes deterministic approved INR defaults without annual pricing', () => {
   const plans = publicPlans();
-  assert.deepEqual(plans.map(plan => [plan.key, plan.monthlyPrice, plan.currency]), [['free', 0, 'INR'], ['pro', 99, 'INR'], ['pro_plus', 149, 'INR'], ['team', null, 'INR'], ['enterprise', null, 'INR']]);
+  assert.deepEqual(plans.map(plan => [plan.key, plan.name, plan.monthlyPrice, plan.currency]), [['free', 'Free', 0, 'INR'], ['pro', 'Starter', 99, 'INR'], ['pro_plus', 'Pro', 149, 'INR']]);
   assert.deepEqual(Object.keys(PLAN_REGISTRY), ['free', 'pro', 'pro_plus', 'team', 'enterprise']);
   assert.equal(new Set(plans.map(plan => plan.key)).size, plans.length);
   assert.ok(Object.values(PLAN_REGISTRY).every(plan => plan.annualPriceMinor === null));
@@ -65,7 +65,7 @@ test('legacy aliases normalize to canonical keys but price numbers never do', ()
 test('migration adds billing stores and canonicalizes recognized legacy subscriptions without deleting them', () => {
   const input: any = { schemaVersion: 12, users: { user: { id: 'user', password: 'long-enough-password', subscription: 'premium_plus' } }, subscriptions: { old: { id: 'old', planId: 'pro-plus', status: 'active' } } };
   const result = applyPlatformMigration(input);
-  assert.equal(result.toVersion, 13); assert.equal(input.users.user.subscription, 'pro_plus'); assert.equal(input.subscriptions.old.planId, 'pro_plus'); assert.ok(input.pendingPlanSelections); assert.ok(input.pendingCheckouts); assert.ok(input.processedPayments);
+  assert.equal(result.toVersion, 14); assert.equal(input.users.user.subscription, 'pro_plus'); assert.equal(input.subscriptions.old.planId, 'pro_plus'); assert.ok(input.pendingPlanSelections); assert.ok(input.pendingCheckouts); assert.ok(input.processedPayments); assert.ok(input.passwordResetTokens); assert.ok(input.emailVerificationTokens);
 });
 
 test('server-owned selection preserves Pro Plus and rejects account or tenant reuse', () => {
@@ -89,16 +89,16 @@ test('checkout maps Pro to 9900 paise and ignores client amount', async () => {
   assert.equal(checkout.amount, 9900); assert.equal(checkout.summary.planKey, 'pro'); assert.equal(db.pendingCheckouts.order_pro.amountMinor, 9900);
 });
 
-test('checkout maps Pro Plus to 14900 paise and can never silently resolve to Pro', async () => {
+test('checkout maps customer-facing Pro to 14900 paise and never resolves to Starter', async () => {
   const { checkout, providerBody, db } = await pendingCheckout('pro_plus');
-  assert.equal(providerBody.amount, 14900); assert.equal(providerBody.notes.planKey, 'pro_plus'); assert.equal(checkout.summary.planName, 'Pro Plus'); assert.equal(checkout.summary.amountMinor, 14900); assert.equal(db.pendingCheckouts.order_pro_plus.planKey, 'pro_plus');
+  assert.equal(providerBody.amount, 14900); assert.equal(providerBody.notes.planKey, 'pro_plus'); assert.equal(checkout.summary.planName, 'Pro'); assert.equal(checkout.summary.amountMinor, 14900); assert.equal(db.pendingCheckouts.order_pro_plus.planKey, 'pro_plus');
 });
 
-test('checkout rejects selection mismatch, free, contact sales, invalid interval and idempotency misuse', async () => {
+test('checkout rejects selection mismatch, free, unavailable future plans, invalid interval and idempotency misuse', async () => {
   const { db, context } = fixture(); const pro = createPlanSelection(db, { planKey: 'pro' }, context);
   await assert.rejects(createCheckout(db, context, { planKey: 'pro_plus' }, providerOrder('unused', () => undefined), pro.token), /does not match/);
   const free = createPlanSelection(db, { planKey: 'free' }, context); await assert.rejects(createCheckout(db, context, { planKey: 'free' }, providerOrder('unused', () => undefined), free.token), /does not require/);
-  const team = createPlanSelection(db, { planKey: 'team' }, context); await assert.rejects(createCheckout(db, context, { planKey: 'team' }, providerOrder('unused', () => undefined), team.token), /Contact Sales/);
+  assert.throws(() => createPlanSelection(db, { planKey: 'team' }, context), (error: any) => error.code === 'PLAN_NOT_FOUND');
   const annual = createPlanSelection(db, { planKey: 'pro' }, context); await assert.rejects(createCheckout(db, context, { planKey: 'pro', billingInterval: 'annual' }, providerOrder('unused', () => undefined), annual.token), /monthly billing/);
   const firstSelection = createPlanSelection(db, { planKey: 'pro' }, context); const first = await createCheckout(db, context, { planKey: 'pro', idempotencyKey: 'same-key' }, providerOrder('order_idempotent', () => undefined), firstSelection.token);
   const duplicate = await createCheckout(db, context, { planKey: 'pro', idempotencyKey: 'same-key' }, providerOrder('must_not_run', () => { throw new Error('provider called twice'); }), firstSelection.token);
@@ -179,8 +179,8 @@ test('current-plan resolution preserves active cancellation periods and expires 
   assert.equal(pastDueSummary.currentPlanKey, 'free'); assert.equal(pastDueSummary.subscriptionStatus, 'past_due');
 });
 
-test('Team and Enterprise submit through the stored Contact Sales flow only', () => {
-  const { db } = fixture(); const { token } = createPlanSelection(db, { planKey: 'team', sourceTool: 'pricing' });
-  const lead = createContactSalesLead(db, { planKey: 'team', name: 'Buyer', workEmail: 'buyer@company.com', company: 'Company', teamSize: '11–50', useCase: 'Governed writing workflows', message: '' }, token);
-  assert.equal(lead.planKey, 'team'); assert.equal(db.contactSalesLeads[lead.id].status, 'received'); assert.throws(() => createContactSalesLead(db, { planKey: 'pro' }, token), /Team and Enterprise/);
+test('Team and Enterprise architecture is preserved but unavailable in Phase 1 public pricing', () => {
+  assert.equal(PLAN_REGISTRY.team.public, false); assert.equal(PLAN_REGISTRY.team.active, false);
+  assert.equal(PLAN_REGISTRY.enterprise.public, false); assert.equal(PLAN_REGISTRY.enterprise.active, false);
+  assert.throws(() => strictPlanKey('team'), (error: any) => error.code === 'PLAN_NOT_FOUND');
 });

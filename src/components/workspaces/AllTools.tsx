@@ -97,7 +97,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
 
     // Enterprise Ops
     { id: 'collaboration', name: 'Team Collaboration', desc: 'Share documents, notes, and templates with team members.', category: 'Enterprise', isPro: true, workspaceId: 'collaboration', icon: Users },
-    { id: 'billing', name: 'Billing & Token Usage', desc: 'Manage your enterprise seats, invoices, and API limits.', category: 'Enterprise', isPro: false, workspaceId: 'billing', icon: CreditCard },
+    { id: 'billing', name: 'Plan & Billing', desc: 'Review your current plan and compare available upgrades.', category: 'Enterprise', isPro: false, workspaceId: 'billing', icon: CreditCard },
     { id: 'admin', name: 'SuperAdmin Dashboard', desc: 'Audit system parameters, workspace logs, and platform stats.', category: 'Enterprise', isPro: true, workspaceId: 'administration', icon: Shield }
   ];
 
@@ -123,7 +123,7 @@ export default function AllTools({ onSelectWorkspace, onOpenUpgradeModal }: AllT
           <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400 dark:text-zinc-500" />
           <input 
             type="text"
-            placeholder="Search 100+ creative tools..."
+            placeholder="Search available tools..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-800 dark:text-zinc-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition"

@@ -1,3 +1,1 @@
-import React from 'react';
-import EmptyWorkspaceState from './EmptyWorkspaceState';
-export default function Pinned() { return <EmptyWorkspaceState title="No pinned items" description="Pinned resources will appear only after you pin a real saved item." />; }
+import React from 'react'; import ResourceView from './ResourceView'; export default function Pinned({ currentUser }: { currentUser?: any }) { return <ResourceView currentUser={currentUser} title="Pinned items" description="Projects and documents pinned for quick access." endpoint="/api/library?view=pinned" />; }

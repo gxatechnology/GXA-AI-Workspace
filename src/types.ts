@@ -15,6 +15,7 @@ export type WorkspaceId =
   | 'billing' 
   | 'administration'
   | 'settings'
+  | 'profile'
   | 'all-tools'
   | 'projects'
   | 'ai-humanizer'

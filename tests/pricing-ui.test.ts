@@ -5,7 +5,6 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import UpgradeModal from '../src/components/UpgradeModal';
-import ContactSalesForm from '../src/components/pricing/ContactSalesForm';
 import { PlanCard, PricingErrorState, PricingGrid } from '../src/components/pricing/PricingComponents';
 import { canonicalPlanKey, buildWorkspaceHash, readWorkspaceHash } from '../src/utils/pricing';
 import { publicPlans } from '../server/billing';
@@ -14,20 +13,21 @@ const plans = publicPlans() as any[];
 
 test('shared plan cards render the canonical names, prices and current/recommended badges', () => {
   const markup = renderToStaticMarkup(React.createElement(PricingGrid, { plans, currentPlanKey: 'free', onSelect: () => undefined }));
-  assert.match(markup, />Free</); assert.match(markup, />Pro</); assert.match(markup, />Pro Plus</); assert.match(markup, /₹0/); assert.match(markup, /₹99/); assert.match(markup, /₹149/); assert.match(markup, /Contact Sales/); assert.match(markup, /Custom Pricing/); assert.match(markup, /Current Plan/); assert.match(markup, /Recommended/);
+  assert.match(markup, />Free</); assert.match(markup, />Starter</); assert.match(markup, />Pro</); assert.doesNotMatch(markup, />Pro Plus</); assert.match(markup, /₹0/); assert.match(markup, /₹99/); assert.match(markup, /₹149/); assert.doesNotMatch(markup, /Contact Sales|Custom Pricing/); assert.match(markup, /Current Plan/); assert.match(markup, /Recommended/);
+  assert.match(markup, /100 AI requests per month/); assert.match(markup, /1,000 AI requests per month/); assert.match(markup, /5,000 AI requests per month/);
 });
 
 test('every pricing surface uses the same PlanCard component contract', () => {
   const proPlus = plans.find(plan => plan.key === 'pro_plus');
   const pricingCard = renderToStaticMarkup(React.createElement(PlanCard, { plan: proPlus, currentPlanKey: 'free', onSelect: () => undefined }));
   const modalCard = renderToStaticMarkup(React.createElement(PlanCard, { plan: proPlus, currentPlanKey: 'free', onSelect: () => undefined }));
-  assert.equal(pricingCard, modalCard); assert.match(pricingCard, /Pro Plus/); assert.match(pricingCard, /₹149/);
+  assert.equal(pricingCard, modalCard); assert.match(pricingCard, />Pro</); assert.match(pricingCard, /₹149/);
 });
 
 test('a feature-specific upgrade card identifies the minimum eligible plan', () => {
   const proPlus = plans.find(plan => plan.key === 'pro_plus');
   const markup = renderToStaticMarkup(React.createElement(PlanCard, { plan: proPlus, currentPlanKey: 'free', badge: 'Minimum plan', onSelect: () => undefined }));
-  assert.match(markup, /Minimum plan/); assert.match(markup, /Upgrade to Pro Plus/); assert.ok(markup.includes(`\u20B9149`));
+  assert.match(markup, /Minimum plan/); assert.match(markup, /Upgrade to Pro/); assert.ok(markup.includes(`\u20B9149`));
 });
 
 test('pricing error state includes an honest retry action', () => {
@@ -40,9 +40,8 @@ test('upgrade modal provides close, Continue with Free and Compare Plans control
   assert.match(markup, /role="dialog"/); assert.match(markup, /Continue with Free/); assert.match(markup, /Compare Plans/); assert.match(markup, /premium paraphrasing modes/); assert.doesNotMatch(markup, /₹99|₹149/);
 });
 
-test('Contact Sales form preserves the selected plan and collects required business fields', () => {
-  const team = plans.find(plan => plan.key === 'team'); const markup = renderToStaticMarkup(React.createElement(ContactSalesForm, { plan: team, onClose: () => undefined }));
-  assert.match(markup, /Team/); assert.match(markup, /Work email/); assert.match(markup, /Company/); assert.match(markup, /Team size/); assert.match(markup, /Use case/); assert.match(markup, /Submit request/);
+test('Phase 1 pricing excludes unimplemented Team and Enterprise sales flows', () => {
+  assert.deepEqual(plans.map(plan => plan.name), ['Free', 'Starter', 'Pro']);
 });
 
 test('hash routing helpers preserve clean return routes and remove malformed query state', () => {

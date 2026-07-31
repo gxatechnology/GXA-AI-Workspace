@@ -26,7 +26,7 @@ import {
   acceptInvitation, addTeamMember, adminScopes, applyPlatformMigration, audit, authenticateApiKey, AuthenticationError,
   bearerToken, completeDataExport, createApiKey, createAutomation, createOrganization,
   createSession, createTeam, createWebhook, executeAutomation, hashPassword, inviteMember,
-  listAccessibleWorkspaces, PlatformError, publicUser, publicWebhook, requestDataExport,
+  listAccessibleWorkspaces, PlatformError, QuotaError, publicUser, publicWebhook, requestDataExport,
   failDataExport, processDataExport, removeTeamMember, requestDeletion, requireAdminScope, resendInvitation, resolveApiKeyContext, resolveSession, resolveTenantContext, rotateApiKey, rotateWebhookSecret,
   securityEvent, setActiveWorkspace, tenantStoreKey, updateMembership, verifyPassword, reserveUsage, commitUsage, releaseUsage,
 } from './server/platform.js';
@@ -41,6 +41,8 @@ import { AIService, safeAIError } from './server/ai/service.js';
 import { AIProviderError, type AIMessage, type AIProviderResult, type AIToolKey } from './server/ai/types.js';
 import { AI_MODEL_REGISTRY, AI_TOOL_ROUTING, DIRECT_GEMINI_MEDIA_MODELS, modelKeyForProviderId, publicModelRegistry, resolveToolRoute } from './server/ai/registry.js';
 import { ApplicationPersistence } from './server/persistence/index.js';
+import { changeAccountPassword, findUserByEmail, issueEmailVerification, issuePasswordReset, readAccountWorkspaceState, registerAccount, resetPassword, updateAccountProfile, verifyAccountEmail, writeAccountWorkspaceState } from './server/account.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from './server/authEmail.js';
 
 dotenv.config();
 
@@ -87,15 +89,26 @@ const hashSecretForLog = (value: string) => crypto.createHash('sha256').update(v
 
 const readDb = () => persistence.read();
 const writeDb = (data: any) => persistence.write(data);
+const SESSION_COOKIE = 'gxa_session';
+const readCookie = (req: express.Request, name: string) => String(req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1) || '';
+const sessionToken = (req: express.Request) => {
+  const headerToken = bearerToken(req.headers);
+  return headerToken && headerToken !== 'cookie-session' ? headerToken : decodeURIComponent(readCookie(req, SESSION_COOKIE));
+};
+const setSessionCookie = (req: express.Request, res: express.Response, token: string) => {
+  const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL) || String(req.headers['x-forwarded-proto'] || '').includes('https');
+  res.append('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`);
+};
+const clearSessionCookie = (res: express.Response) => res.append('Set-Cookie', `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
 
 // Helpers for auth check
 const getUserId = (req: express.Request) => {
-  const auth = resolveSession(readDb(), bearerToken(req.headers));
+  const auth = resolveSession(readDb(), sessionToken(req));
   return auth?.user.id || null;
 };
 
-const getContext = (req: express.Request, db = readDb()) => resolveTenantContext(db, bearerToken(req.headers));
-const optionalContext = (req: express.Request, db: any) => { try { return bearerToken(req.headers) ? getContext(req, db) : null; } catch { return null; } };
+const getContext = (req: express.Request, db = readDb()) => resolveTenantContext(db, sessionToken(req));
+const optionalContext = (req: express.Request, db: any) => { try { return sessionToken(req) ? getContext(req, db) : null; } catch { return null; } };
 const getResourceKey = (req: express.Request, db: any) => tenantStoreKey(getContext(req, db));
 const safeError = (res: express.Response, error: any, fallback = 'Request failed.') => {
   const status = error instanceof PlatformError ? error.status : 500;
@@ -117,7 +130,7 @@ const activeAIRequests = new Map<string, number>();
 const maxConcurrentAIRequests = Math.max(1, Math.min(20, Number(process.env.AI_MAX_CONCURRENT_REQUESTS || 3)));
 
 function aiContext(req: express.Request, db: any) {
-  const token = bearerToken(req.headers);
+  const token = sessionToken(req);
   if (token) return getContext(req, db);
   const subject = `guest_${hashSecretForLog(`${req.ip || req.socket.remoteAddress || 'unknown'}:${String(req.headers['user-agent'] || '').slice(0, 120)}`)}`;
   const plan = PLAN_REGISTRY.free;
@@ -180,7 +193,6 @@ async function generateAI(req: express.Request, tool: AIToolKey, prompt: string,
   }
 }
 const PLAN_SELECTION_COOKIE = 'gxa_plan_selection';
-const readCookie = (req: express.Request, name: string) => String(req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1) || '';
 const selectionToken = (req: express.Request) => decodeURIComponent(readCookie(req, PLAN_SELECTION_COOKIE));
 const setSelectionCookie = (req: express.Request, res: express.Response, token: string) => {
   const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL) || String(req.headers['x-forwarded-proto'] || '').includes('https');
@@ -189,83 +201,65 @@ const setSelectionCookie = (req: express.Request, res: express.Response, token: 
 
 // Authentication Endpoints
 app.post('/api/auth/register', rateLimit('auth-register', 10, 15 * 60_000), (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password are required' });
-  }
-  const normalizedEmail = String(email).trim().toLowerCase();
-  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return res.status(400).json({ error: 'Enter a valid email address.', code: 'INVALID_EMAIL' });
-  const db = readDb();
-  if (db.users[normalizedEmail]) {
-    return res.status(400).json({ error: 'User already exists with this email address' });
-  }
-  const newUser = {
-    id: normalizedEmail,
-    username: normalizedEmail.split('@')[0],
-    name: String(name).trim().slice(0, 100),
-    email: normalizedEmail,
-    password: hashPassword(String(password)),
-    subscription: 'free',
-    role: 'User',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  db.users[normalizedEmail] = newUser;
-  db.projects[normalizedEmail] = [];
-  db.documents[normalizedEmail] = [];
-  db.chats[normalizedEmail] = [];
-  const session = createSession(db, normalizedEmail, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
-  let pendingSelection = null;
-  try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: normalizedEmail, tenantType: 'personal', tenantId: normalizedEmail }); } catch {}
-  writeDb(db);
-  res.status(201).json({ success: true, user: publicUser(newUser, session.token), pendingSelection });
+  try {
+    const db = readDb();
+    const created = registerAccount(db, req.body, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
+    let pendingSelection = null;
+    try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: created.user.id, tenantType: 'personal', tenantId: created.user.id }); } catch {}
+    const verification = issueEmailVerification(db, created.user);
+    writeDb(db);
+    setSessionCookie(req, res, created.session.token);
+    if (verification) void sendVerificationEmail(created.user, verification.rawToken).catch(() => undefined);
+    res.status(201).json({ success: true, user: publicUser(created.user, 'cookie-session'), pendingSelection, verification: { required: true, deliveryConfigured: Boolean(process.env.RESEND_API_KEY && process.env.AUTH_EMAIL_FROM && process.env.APP_ORIGIN) } });
+  } catch (error) { safeError(res, error); }
 });
 
 app.post('/api/auth/login', rateLimit('auth-login', 20, 15 * 60_000), (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-  const db = readDb();
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const user = db.users[normalizedEmail];
-  if (!user || !verifyPassword(String(password), String(user.password || ''))) {
-    securityEvent(db, { actorId: normalizedEmail, type: 'auth.login_failed', outcome: 'denied' }); writeDb(db);
-    return res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' });
-  }
-  if (user.status === 'suspended') return res.status(403).json({ error: 'Account is suspended.', code: 'ACCOUNT_SUSPENDED' });
-  if (!String(user.password).startsWith('scrypt$')) user.password = hashPassword(String(password));
-  const session = createSession(db, user.id, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
-  let pendingSelection = null;
-  try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: user.id, tenantType: 'personal', tenantId: user.id }); } catch {}
-  writeDb(db);
-  res.json({ success: true, user: publicUser(user, session.token), pendingSelection });
+  try {
+    const db = readDb();
+    const user = findUserByEmail(db, req.body?.email);
+    if (!user || !verifyPassword(String(req.body?.password || ''), String(user.password || ''))) {
+      securityEvent(db, { actorId: String(req.body?.email || '').toLowerCase(), type: 'auth.login_failed', outcome: 'denied' }); writeDb(db);
+      throw new AuthenticationError('Invalid email or password.');
+    }
+    if (user.status === 'suspended') throw new PlatformError('Account is suspended.', 403, 'ACCOUNT_SUSPENDED');
+    if (!String(user.password).startsWith('scrypt$')) user.password = hashPassword(String(req.body.password));
+    const session = createSession(db, user.id, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
+    let pendingSelection = null;
+    try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: user.id, tenantType: 'personal', tenantId: user.id }); } catch {}
+    writeDb(db);
+    setSessionCookie(req, res, session.token);
+    res.json({ success: true, user: publicUser(user, 'cookie-session'), pendingSelection });
+  } catch (error) { safeError(res, error); }
 });
 
 app.get('/api/auth/profile', (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const db = readDb();
-  const user = db.users[userId];
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  res.json({ user: publicUser(user) });
+  try { const db = readDb(); const context = getContext(req, db); writeDb(db); res.setHeader('Cache-Control', 'no-store'); res.json({ user: publicUser(context.user, 'cookie-session') }); }
+  catch (error) { safeError(res, error); }
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  const db = readDb(); const auth = resolveSession(db, bearerToken(req.headers));
+  const db = readDb(); const auth = resolveSession(db, sessionToken(req));
   if (auth) { auth.session.revokedAt = new Date().toISOString(); audit(db, { tenantId: auth.user.id, actorId: auth.user.id, action: 'session.revoked', resourceType: 'session', resourceId: auth.session.id }); writeDb(db); }
+  clearSessionCookie(res);
   res.json({ success: true });
 });
 
 app.get('/api/auth/sessions', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.json({ sessions: Object.values<any>(db.sessions).filter(item => item.userId === context.user.id && !item.revokedAt).map(({ tokenHash, ...item }) => ({ ...item, current: item.id === context.session.id })) }); } catch (error) { safeError(res, error); } });
 app.delete('/api/auth/sessions/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const session = db.sessions[req.params.id]; if (!session || session.userId !== context.user.id) return res.status(404).json({ error: 'Session not found.' }); session.revokedAt = new Date().toISOString(); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'session.revoked', resourceType: 'session', resourceId: session.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
 app.post('/api/auth/sessions/revoke-others', (req, res) => { try { const db = readDb(); const context = getContext(req, db); let revoked = 0; for (const session of Object.values<any>(db.sessions).filter(item => item.userId === context.user.id && item.id !== context.session.id && !item.revokedAt)) { session.revokedAt = new Date().toISOString(); revoked += 1; } audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'sessions.other_revoked', resourceType: 'user', resourceId: context.user.id, metadata: { revoked } }); writeDb(db); res.json({ success: true, revoked }); } catch (error) { safeError(res, error); } });
-app.post('/api/auth/password', rateLimit('password-change', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (!verifyPassword(String(req.body.currentPassword || ''), String(context.user.password || ''))) throw new AuthenticationError('Current password is incorrect.'); context.user.password = hashPassword(String(req.body.newPassword || '')); context.user.updatedAt = new Date().toISOString(); for (const session of Object.values<any>(db.sessions).filter(item => item.userId === context.user.id && item.id !== context.session.id)) session.revokedAt = new Date().toISOString(); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'password.changed', resourceType: 'user', resourceId: context.user.id }); securityEvent(db, { actorId: context.user.id, type: 'account.password_changed', outcome: 'success' }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+app.post('/api/auth/password', rateLimit('password-change', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); changeAccountPassword(db, context.user, String(req.body.currentPassword || ''), String(req.body.newPassword || ''), context.session.id); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'password.changed', resourceType: 'user', resourceId: context.user.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+
+app.post('/api/auth/forgot-password', rateLimit('password-reset-request', 5, 60 * 60_000), async (req, res) => {
+  try { const db = readDb(); const reset = issuePasswordReset(db, req.body?.email); writeDb(db); if (reset) await sendPasswordResetEmail(reset.user, reset.rawToken).catch(() => undefined); res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent.' }); }
+  catch (error) { safeError(res, error); }
+});
+app.post('/api/auth/reset-password', rateLimit('password-reset', 10, 60 * 60_000), (req, res) => { try { const db = readDb(); resetPassword(db, String(req.body?.token || ''), String(req.body?.password || '')); writeDb(db); clearSessionCookie(res); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+app.post('/api/auth/email-verification/request', rateLimit('verification-request', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); const verification = issueEmailVerification(db, context.user); writeDb(db); if (verification) void sendVerificationEmail(context.user, verification.rawToken).catch(() => undefined); res.json({ success: true, alreadyVerified: Boolean(context.user.emailVerifiedAt) }); } catch (error) { safeError(res, error); } });
+app.post('/api/auth/email-verification/confirm', rateLimit('verification-confirm', 20, 60 * 60_000), (req, res) => { try { const db = readDb(); const user = verifyAccountEmail(db, String(req.body?.token || '')); writeDb(db); res.json({ success: true, user: publicUser(user, 'cookie-session') }); } catch (error) { safeError(res, error); } });
+
+app.get('/api/account/profile', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.setHeader('Cache-Control', 'no-store'); res.json({ user: publicUser(context.user) }); } catch (error) { safeError(res, error); } });
+app.patch('/api/account/profile', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const user = updateAccountProfile(db, context.user, req.body); writeDb(db); res.json({ success: true, user: { ...user, sessionToken: 'cookie-session' } }); } catch (error) { safeError(res, error); } });
 
 app.post('/api/auth/upgrade', (req, res) => {
   res.status(410).json({ error: 'Direct plan activation is disabled. Use verified checkout and payment webhooks.', code: 'VERIFIED_CHECKOUT_REQUIRED' });
@@ -274,7 +268,7 @@ app.post('/api/auth/upgrade', (req, res) => {
 // Admin Config & Usage Limits API Endpoints
 app.get('/api/admin/config', (req, res) => {
   const db = readDb();
-  const auth = resolveSession(db, bearerToken(req.headers));
+  const auth = resolveSession(db, sessionToken(req));
   if (auth) { try { requireAdminScope(auth.user, 'plans.manage'); return res.json({ config: db.config }); } catch {} }
   const { coupons, ai_tool_model_overrides, media_image_model, media_vision_model, ...publicConfig } = db.config;
   publicConfig.chat_models = publicModelRegistry('free', aiEnvironment.defaultProvider).map(model => ({ id: model.key, name: model.displayName, multimodal: model.supportedModalities.includes('image'), plan: model.requiredPlan }));
@@ -348,6 +342,13 @@ app.delete('/api/platform/teams/:id/members/:membershipId', (req, res) => { try 
 app.get('/api/platform/usage', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('usage.view')) throw new PlatformError('Usage permission required.', 403, 'AUTHORIZATION_DENIED'); const events = db.usageEvents.filter((item: any) => item.tenantId === context.tenantId); const legacy = context.tenantType === 'personal' ? db.usage[context.user.id] || {} : {}; const totals = events.reduce((result: any, event: any) => { result[event.dimension] = Number(result[event.dimension] || 0) + Number(event.quantity || 0); return result; }, {}); res.json({ planId: context.planId, limits: context.limits, totals, legacy, events: events.slice(-100).reverse() }); } catch (error) { safeError(res, error); } });
 
 app.get('/api/billing/current-plan', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.setHeader('Cache-Control', 'no-store'); res.json(currentPlanSummary(context, db)); } catch (error) { safeError(res, error); } });
+app.get('/api/dashboard', (req, res) => { try {
+  const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context);
+  const recentProjects = [...(db.projects[key] || [])].filter((item: any) => !item.deletedAt).sort((a: any, b: any) => Date.parse(b.updatedAt || b.createdAt || '0') - Date.parse(a.updatedAt || a.createdAt || '0')).slice(0, 5);
+  const recentDocuments = [...(db.documents[key] || [])].filter((item: any) => !item.deletedAt).sort((a: any, b: any) => Date.parse(b.updatedAt || b.createdAt || '0') - Date.parse(a.updatedAt || a.createdAt || '0')).slice(0, 5).map(({ fileData, extractedPages, content, ...item }: any) => item);
+  const recentAIHistory = [...(db.aiProviderRequests || [])].filter((item: any) => item.tenantId === context.tenantId && item.userId === context.user.id).sort((a: any, b: any) => Date.parse(b.createdAt || '0') - Date.parse(a.createdAt || '0')).slice(0, 5).map((item: any) => ({ id: item.id, tool: item.tool, status: item.status, createdAt: item.createdAt }));
+  res.setHeader('Cache-Control', 'no-store'); res.json({ user: publicUser(context.user), workspace: context.workspace, plan: currentPlanSummary(context, db), recentProjects, recentDocuments, recentAIHistory });
+} catch (error) { safeError(res, error); } });
 app.get('/api/entitlements/current', (req, res) => { try { const db = readDb(); const context = optionalContext(req, db); if (context) return res.json(currentPlanSummary(context, db)); const guest = { plan: publicPlans().find(plan => plan.key === 'free'), currentPlanKey: 'free', subscriptionStatus: 'free', entitlements: Object.fromEntries(Object.keys(FEATURE_PLAN_REQUIREMENTS).map(key => [key, planIncludesFeature('free', key)])), limits: PLAN_REGISTRY.free.limits }; res.json(guest); } catch (error) { safeError(res, error); } });
 app.get('/api/platform/billing', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('billing.view')) throw new PlatformError('Billing viewing permission required.', 403, 'AUTHORIZATION_DENIED'); const subscriptions = Object.values<any>(db.subscriptions).filter(item => item.tenantType === context.tenantType && item.tenantId === context.tenantId); const invoices = Object.values<any>(db.invoices || {}).filter(item => item.tenantType === context.tenantType && item.tenantId === context.tenantId); res.json({ ...currentPlanSummary(context, db), subscriptions, invoices, provider: billingCheckoutAvailable() ? 'razorpay' : null, checkoutAvailability: pricingPlansResponse().checkoutAvailability, billingPortal: { available: false, reason: 'Razorpay does not provide a hosted customer billing portal in this integration.' } }); } catch (error) { safeError(res, error); } });
 const checkoutHandler = async (req: express.Request, res: express.Response) => {
@@ -600,7 +601,7 @@ app.post('/api/writer/generate', async (req, res) => {
 
 // Projects API Endpoints
 app.get('/api/projects', (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('projects.view')) throw new PlatformError('Project viewing permission required.', 403, 'AUTHORIZATION_DENIED'); res.json({ projects: db.projects[tenantStoreKey(context)] || [], workspace: context.workspace }); } catch (error) { safeError(res, error); }
+  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('projects.view')) throw new PlatformError('Project viewing permission required.', 403, 'AUTHORIZATION_DENIED'); res.json({ projects: (db.projects[tenantStoreKey(context)] || []).filter((item: any) => !item.deletedAt), workspace: context.workspace }); } catch (error) { safeError(res, error); }
 });
 
 app.post('/api/projects', (req, res) => {
@@ -611,6 +612,7 @@ app.post('/api/projects', (req, res) => {
   }
   const storeKey = tenantStoreKey(context);
   if (!db.projects[storeKey]) db.projects[storeKey] = [];
+  if (db.projects[storeKey].length >= Number(context.limits.project_limit || 0)) return safeError(res, new QuotaError());
   const newProject = {
     id: crypto.randomUUID(),
     ownerId: context.user.id, tenantType: context.tenantType, tenantId: context.tenantId,
@@ -629,12 +631,13 @@ app.post('/api/projects', (req, res) => {
 });
 
 app.delete('/api/projects/:id', (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('projects.delete')) throw new PlatformError('Project deletion permission required.', 403, 'AUTHORIZATION_DENIED'); const key = tenantStoreKey(context); const records = db.projects[key] || []; if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Project not found.' }); db.projects[key] = records.filter((item: any) => item.id !== req.params.id); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'project.deleted', resourceType: 'project', resourceId: req.params.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); }
+  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('projects.delete')) throw new PlatformError('Project deletion permission required.', 403, 'AUTHORIZATION_DENIED'); const item = (db.projects[tenantStoreKey(context)] || []).find((candidate: any) => candidate.id === req.params.id && !candidate.deletedAt); if (!item) return res.status(404).json({ error: 'Project not found.' }); item.deletedAt = new Date().toISOString(); item.updatedAt = item.deletedAt; audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'project.trashed', resourceType: 'project', resourceId: req.params.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); }
 });
+app.patch('/api/projects/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const item = (db.projects[tenantStoreKey(context)] || []).find((candidate: any) => candidate.id === req.params.id && !candidate.deletedAt); if (!item) return res.status(404).json({ error: 'Project not found.' }); if (typeof req.body.favorite === 'boolean') item.favorite = req.body.favorite; if (typeof req.body.pinned === 'boolean') item.pinned = req.body.pinned; if (typeof req.body.collection === 'string') item.collection = req.body.collection.trim().slice(0, 80); if (typeof req.body.name === 'string' && req.body.name.trim()) item.name = req.body.name.trim().slice(0, 100); item.updatedAt = new Date().toISOString(); writeDb(db); res.json({ project: item }); } catch (error) { safeError(res, error); } });
 
 // Documents / PDF API Endpoints
 app.get('/api/documents', (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.view')) throw new PlatformError('Document viewing permission required.', 403, 'AUTHORIZATION_DENIED'); res.json({ documents: (db.documents[tenantStoreKey(context)] || []).map(({ fileData, extractedPages, ...document }: any) => ({ ...document, searchable: Array.isArray(extractedPages) && extractedPages.some((page: any) => page.text) })) }); } catch (error) { safeError(res, error); }
+  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.view')) throw new PlatformError('Document viewing permission required.', 403, 'AUTHORIZATION_DENIED'); res.json({ documents: (db.documents[tenantStoreKey(context)] || []).filter((item: any) => !item.deletedAt).map(({ fileData, extractedPages, ...document }: any) => ({ ...document, searchable: Array.isArray(extractedPages) && extractedPages.some((page: any) => page.text) })) }); } catch (error) { safeError(res, error); }
 });
 
 app.post('/api/documents/upload', async (req, res) => {
@@ -651,7 +654,7 @@ app.post('/api/documents/upload', async (req, res) => {
     const usageId = userId || 'guest';
     db.usage[usageId] ||= {}; db.usage[usageId][today] ||= { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0 };
     const premium = Boolean(context && PLAN_REGISTRY[normalizePlanId(context.planId)].rank >= PLAN_REGISTRY.pro.rank);
-    if (!premium && db.usage[usageId][today].pdf_uploads >= Number(config.pdf_uploads_limit || 3)) return res.status(429).json({ error: 'Daily document upload limit reached. Your selected file remains available in this session.', code: 'PLAN_LIMIT' });
+    if (!premium && db.usage[usageId][today].pdf_uploads >= Number(config.pdf_uploads_limit || 3)) return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' });
     const processed = await processDocument(name, mimeType, bytes, Number(config.document_page_limit || 100));
     const createdAt = new Date().toISOString();
     const document = {
@@ -662,7 +665,7 @@ app.post('/api/documents/upload', async (req, res) => {
       extractedPages: processed.pages, fileData: Buffer.from(bytes).toString('base64'), createdAt, updatedAt: createdAt,
       projectId: typeof req.body.projectId === 'string' ? req.body.projectId : undefined
     };
-    if (userId) { const key = tenantStoreKey(context); if (document.projectId && !(db.projects[key] || []).some((project: any) => project.id === document.projectId)) return res.status(403).json({ error: 'The selected project is not available in this workspace.' }); db.documents[key] ||= []; db.documents[key].unshift(document); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'document.uploaded', resourceType: 'document', resourceId: document.id, metadata: { mimeType, sizeBytes: bytes.length } }); }
+    if (userId) { const key = tenantStoreKey(context); if (document.projectId && !(db.projects[key] || []).some((project: any) => project.id === document.projectId)) return res.status(403).json({ error: 'The selected project is not available in this workspace.' }); db.documents[key] ||= []; if (db.documents[key].length >= Number(context.limits.saved_document_limit || 0)) return safeError(res, new QuotaError()); db.documents[key].unshift(document); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'document.uploaded', resourceType: 'document', resourceId: document.id, metadata: { mimeType, sizeBytes: bytes.length } }); }
     db.usage[usageId][today].pdf_uploads += 1; writeDb(db);
     const { fileData, extractedPages, ...publicDocument } = document;
     res.status(201).json({ document: { ...publicDocument, extractedPages }, usage: db.usage[usageId][today], persisted: Boolean(userId) });
@@ -673,7 +676,7 @@ app.post('/api/documents/upload', async (req, res) => {
 });
 
 app.get('/api/documents/:id/download', (req, res) => {
-  const db = readDb(); let context; try { context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.view')) throw new PlatformError('Document viewing permission required.', 403, 'AUTHORIZATION_DENIED'); } catch (error) { return safeError(res, error); } const document = (db.documents[tenantStoreKey(context)] || []).find((item: any) => item.id === req.params.id);
+  const db = readDb(); let context; try { context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.view')) throw new PlatformError('Document viewing permission required.', 403, 'AUTHORIZATION_DENIED'); } catch (error) { return safeError(res, error); } const document = (db.documents[tenantStoreKey(context)] || []).find((item: any) => item.id === req.params.id && !item.deletedAt);
   if (!document?.fileData) return res.status(404).json({ error: 'Document file is unavailable.' });
   res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFileName(document.name)}"`);
@@ -707,6 +710,7 @@ app.post('/api/documents', (req, res) => {
     return res.status(403).json({ error: 'The selected project is not available in this workspace.' });
   }
   if (!db.documents[storeKey]) db.documents[storeKey] = [];
+  if (db.documents[storeKey].length >= Number(context.limits.saved_document_limit || 0)) return safeError(res, new QuotaError());
   const newDoc = {
     id: crypto.randomUUID(),
     name,
@@ -727,8 +731,22 @@ app.post('/api/documents', (req, res) => {
 });
 
 app.delete('/api/documents/:id', (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.delete')) throw new PlatformError('Document deletion permission required.', 403, 'AUTHORIZATION_DENIED'); const key = tenantStoreKey(context); const records = db.documents[key] || []; if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Document not found.' }); db.documents[key] = records.filter((item: any) => item.id !== req.params.id); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'document.deleted', resourceType: 'document', resourceId: req.params.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); }
+  try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('documents.delete')) throw new PlatformError('Document deletion permission required.', 403, 'AUTHORIZATION_DENIED'); const item = (db.documents[tenantStoreKey(context)] || []).find((candidate: any) => candidate.id === req.params.id && !candidate.deletedAt); if (!item) return res.status(404).json({ error: 'Document not found.' }); item.deletedAt = new Date().toISOString(); item.updatedAt = item.deletedAt; audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'document.trashed', resourceType: 'document', resourceId: req.params.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); }
 });
+app.patch('/api/documents/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const item = (db.documents[tenantStoreKey(context)] || []).find((candidate: any) => candidate.id === req.params.id && !candidate.deletedAt); if (!item) return res.status(404).json({ error: 'Document not found.' }); if (typeof req.body.favorite === 'boolean') item.favorite = req.body.favorite; if (typeof req.body.pinned === 'boolean') item.pinned = req.body.pinned; if (typeof req.body.collection === 'string') item.collection = req.body.collection.trim().slice(0, 80); item.updatedAt = new Date().toISOString(); writeDb(db); const { fileData, extractedPages, ...document } = item; res.json({ document }); } catch (error) { safeError(res, error); } });
+
+app.get('/api/library', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context); const view = String(req.query.view || 'all'); const match = (item: any) => !item.deletedAt && (view === 'favorites' ? item.favorite : view === 'pinned' ? item.pinned : view === 'collections' ? Boolean(item.collection) : true); const clean = (item: any, kind: string) => { const { fileData, extractedPages, content, ...safe } = item; return { ...safe, kind }; }; res.json({ items: [...(db.projects[key] || []).filter(match).map((item: any) => clean(item, 'project')), ...(db.documents[key] || []).filter(match).map((item: any) => clean(item, 'document'))].sort((a: any, b: any) => Date.parse(b.updatedAt || b.createdAt || '0') - Date.parse(a.updatedAt || a.createdAt || '0')) }); } catch (error) { safeError(res, error); } });
+app.get('/api/history', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context); const ai = (db.aiProviderRequests || []).filter((item: any) => item.tenantId === context.tenantId && item.userId === context.user.id).map((item: any) => ({ id: item.id, kind: 'AI activity', name: String(item.tool || 'AI').replaceAll('_', ' '), status: item.status, createdAt: item.createdAt })); const chats = (db.chats[key] || []).map((item: any) => ({ id: item.id, kind: 'Chat', name: item.title || 'Untitled chat', status: item.status || 'saved', createdAt: item.updatedAt || item.createdAt })); res.json({ items: [...ai, ...chats].sort((a: any, b: any) => Date.parse(b.createdAt || '0') - Date.parse(a.createdAt || '0')).slice(0, 100) }); } catch (error) { safeError(res, error); } });
+app.get('/api/trash', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context); const clean = (item: any, kind: string) => { const { fileData, extractedPages, content, ...safe } = item; return { ...safe, kind }; }; res.json({ items: [...(db.projects[key] || []).filter((item: any) => item.deletedAt).map((item: any) => clean(item, 'project')), ...(db.documents[key] || []).filter((item: any) => item.deletedAt).map((item: any) => clean(item, 'document'))].sort((a: any, b: any) => Date.parse(b.deletedAt || '0') - Date.parse(a.deletedAt || '0')) }); } catch (error) { safeError(res, error); } });
+app.post('/api/trash/:kind/:id/restore', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const store = req.params.kind === 'project' ? db.projects : req.params.kind === 'document' ? db.documents : null; if (!store) throw new PlatformError('Resource type is invalid.', 400, 'RESOURCE_TYPE_INVALID'); const item = (store[tenantStoreKey(context)] || []).find((candidate: any) => candidate.id === req.params.id && candidate.deletedAt); if (!item) return res.status(404).json({ error: 'Deleted item not found.' }); item.deletedAt = null; item.updatedAt = new Date().toISOString(); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+app.delete('/api/trash/:kind/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const store = req.params.kind === 'project' ? db.projects : req.params.kind === 'document' ? db.documents : null; if (!store) throw new PlatformError('Resource type is invalid.', 400, 'RESOURCE_TYPE_INVALID'); const key = tenantStoreKey(context); if (!(store[key] || []).some((candidate: any) => candidate.id === req.params.id && candidate.deletedAt)) return res.status(404).json({ error: 'Deleted item not found.' }); store[key] = store[key].filter((candidate: any) => candidate.id !== req.params.id); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+
+app.get('/api/prompts', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.json({ prompts: db.savedPrompts[tenantStoreKey(context)] || [] }); } catch (error) { safeError(res, error); } });
+app.post('/api/prompts', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const title = String(req.body.title || '').trim().slice(0, 100); const content = String(req.body.content || '').trim().slice(0, Number(context.limits.max_input_characters || 12000)); if (!title || !content) throw new PlatformError('Prompt title and content are required.', 400, 'PROMPT_REQUIRED'); const key = tenantStoreKey(context); db.savedPrompts[key] ||= []; const prompt = { id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; db.savedPrompts[key].unshift(prompt); writeDb(db); res.status(201).json({ prompt }); } catch (error) { safeError(res, error); } });
+app.delete('/api/prompts/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context); const records = db.savedPrompts[key] || []; if (!records.some((item: any) => item.id === req.params.id)) return res.status(404).json({ error: 'Prompt not found.' }); db.savedPrompts[key] = records.filter((item: any) => item.id !== req.params.id); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+
+app.get('/api/account/state/:key', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = readAccountWorkspaceState(db, context.user.id, req.params.key); res.setHeader('Cache-Control', 'no-store'); res.json({ value: record?.value ?? null, updatedAt: record?.updatedAt || null }); } catch (error) { safeError(res, error); } });
+app.put('/api/account/state/:key', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = writeAccountWorkspaceState(db, context.user.id, req.params.key, req.body?.value); writeDb(db); res.json({ success: true, updatedAt: record.updatedAt }); } catch (error) { safeError(res, error); } });
 
 // Owned conversation APIs. Guests intentionally keep temporary chats in their browser session.
 const ownedConversations = (db: any, storeKey: string): ChatConversationRecord[] => {
@@ -797,7 +815,7 @@ const browserAISystemInstructions: Record<string, string> = {
 app.get('/api/ai/config', (req, res) => {
   const db = readDb();
   let planId: keyof typeof PLAN_REGISTRY = 'free';
-  try { if (bearerToken(req.headers)) planId = getContext(req, db).planId; } catch (error) { return safeError(res, error); }
+  try { if (sessionToken(req)) planId = getContext(req, db).planId; } catch (error) { return safeError(res, error); }
   res.json({ ...publicAIEnvironment(aiEnvironment), models: publicModelRegistry(planId, aiEnvironment.defaultProvider) });
 });
 
@@ -1105,7 +1123,7 @@ app.post('/api/documents/ocr', (_req, res) => res.status(501).json({ error: 'OCR
 app.post('/api/originality/detect', (req, res) => {
   const userId = getUserId(req) || 'guest'; const db = readDb(); const today = new Date().toISOString().slice(0, 10); db.usage[userId] ||= {}; db.usage[userId][today] ||= { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0, originality_analyses: 0 };
   const premium = PLAN_REGISTRY[optionalContext(req, db)?.planId || 'free'].rank >= PLAN_REGISTRY.pro.rank;
-  if (!premium && (db.usage[userId][today].originality_analyses || 0) >= Number(db.config.originality_daily_limit || 5)) return res.status(429).json({ error: 'Daily analysis limit reached. Your text remains available.', code: 'PLAN_LIMIT' });
+  if (!premium && (db.usage[userId][today].originality_analyses || 0) >= Number(db.config.originality_daily_limit || 5)) return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' });
   try { const result = analyzeDetection(req.body.text, req.body.language, Number(db.config.originality_character_limit || 30000)); db.usage[userId][today].originality_analyses = (db.usage[userId][today].originality_analyses || 0) + 1; writeDb(db); res.json({ result, usage: db.usage[userId][today] }); }
   catch (error: any) { res.status(error instanceof OriginalityValidationError ? error.status : 500).json({ error: error instanceof OriginalityValidationError ? error.message : 'Analysis failed.', code: error?.code }); }
 });
@@ -1149,7 +1167,7 @@ app.post('/api/chat/stream', async (req, res) => {
     db.usage[usageId][today] ||= { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0, writer_generations: 0 };
     const premium = context && context.planId !== 'free';
     if (!premium && db.usage[usageId][today].chats >= Number(config.ai_chats_limit || 5)) {
-      return res.status(429).json({ error: 'Daily chat limit reached. Your draft and conversation are still available.', code: 'PLAN_LIMIT' });
+      return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' });
     }
 
     let conversation: ChatConversationRecord | undefined;
@@ -1221,7 +1239,7 @@ app.post('/api/chat/stream', async (req, res) => {
 app.get('/api/translation/config', (_req, res) => { const config = readDb().config; res.json({ languages: config.translation_languages, modes: config.translation_modes, characterLimit: config.translation_character_limit, dailyLimit: config.translation_daily_limit }); });
 app.post('/api/translation/translate', async (req, res) => {
   try {
-    const db = readDb(); const userId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0, 10); db.usage[userId] ||= {}; db.usage[userId][today] ||= {}; const used = Number(db.usage[userId][today].translations || 0); const limit = Number(db.config.translation_daily_limit || 10); if (used >= limit) return res.status(429).json({ error: 'Daily translation limit reached. Your source text is preserved.', code: 'TRANSLATION_LIMIT' });
+    const db = readDb(); const userId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0, 10); db.usage[userId] ||= {}; db.usage[userId][today] ||= {}; const used = Number(db.usage[userId][today].translations || 0); const limit = Number(db.config.translation_daily_limit || 10); if (used >= limit) return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' });
     const request = validateTranslationRequest(req.body, Number(db.config.translation_character_limit || 20000)); const built = buildTranslationPrompt(request); const response = await generateAI(req, 'translator', built.prompt, { systemInstruction: built.systemInstruction }); const output = String(response.text || '').trim(); if (!output) throw new TranslationValidationError('The translation provider returned no content.', 502, 'EMPTY_TRANSLATION'); const usageDb = readDb(); usageDb.usage[userId] ||= {}; usageDb.usage[userId][today] ||= {}; usageDb.usage[userId][today].translations = Number(usageDb.usage[userId][today].translations || 0) + 1; writeDb(usageDb); res.json({ translation: output, sourceLanguage: request.sourceLanguage, detection: request.detection, review: reviewTranslation(request.text, output, request.preserve), usage: { used: usageDb.usage[userId][today].translations, limit } });
   } catch (error: any) { if (error instanceof TranslationValidationError) return res.status(error.status).json({ error: error.message, code: error.code }); const safe = safeAIError(error); res.status(safe.status === 499 ? 408 : safe.status).json({ error: safe.message, code: safe.code }); }
 });
@@ -1241,7 +1259,7 @@ app.put('/api/career/resumes/:id', (req, res) => { const userId = getUserId(req)
 app.post('/api/career/resumes/:id/versions', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Unauthorized' }); const db = readDb(); const resume = (db.resumes[userId] || []).find((item: any) => item.id === req.params.id); if (!resume) return res.status(404).json({ error: 'Resume not found.' }); const version = { id: crypto.randomUUID(), title: String(req.body.title || `Version ${(resume.versions?.length || 0) + 1}`).slice(0,100), templateId: resume.templateId, targetRole: resume.targetRole, sections: structuredClone(resume.sections), createdAt: new Date().toISOString() }; resume.versions ||= []; resume.versions.unshift(version); writeDb(db); res.status(201).json({ version }); });
 app.post('/api/career/import/parse', (req, res) => { try { res.json({ review: parseResumeText(req.body.text) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
 app.post('/api/career/ats', (req, res) => { try { res.json({ analysis: analyzeAts(req.body.resumeText, req.body.jobDescription) }); } catch (error: any) { res.status(error.status || 400).json({ error: error.message }); } });
-app.post('/api/career/generate', async (req, res) => { try { const db = readDb(); const usageId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0,10); db.usage[usageId] ||= {}; db.usage[usageId][today] ||= {}; const used = Number(db.usage[usageId][today].career_generations || 0); const limit = Number(db.config.career_daily_ai_limit || 5); if (used >= limit) return res.status(429).json({ error: 'Daily Career Studio generation limit reached. Your facts are preserved.' }); const built = buildCareerPrompt(req.body); const tool: AIToolKey = built.action === 'cover-letter' ? 'cover_letter' : 'resume_builder'; const response = await generateAI(req, tool, built.prompt, { systemInstruction: built.systemInstruction }); const usageDb = readDb(); usageDb.usage[usageId] ||= {}; usageDb.usage[usageId][today] ||= {}; usageDb.usage[usageId][today].career_generations = Number(usageDb.usage[usageId][today].career_generations || 0) + 1; writeDb(usageDb); res.json({ output: String(response.text || '').trim(), usage: { used: usageDb.usage[usageId][today].career_generations, limit } }); } catch (error: any) { if (error instanceof CareerValidationError) return res.status(error.status).json({ error: error.message }); const safe = safeAIError(error); res.status(safe.status === 499 ? 408 : safe.status).json({ error: safe.message, code: safe.code }); } });
+app.post('/api/career/generate', async (req, res) => { try { const db = readDb(); const usageId = getUserId(req) || 'guest'; const today = new Date().toISOString().slice(0,10); db.usage[usageId] ||= {}; db.usage[usageId][today] ||= {}; const used = Number(db.usage[usageId][today].career_generations || 0); const limit = Number(db.config.career_daily_ai_limit || 5); if (used >= limit) return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' }); const built = buildCareerPrompt(req.body); const tool: AIToolKey = built.action === 'cover-letter' ? 'cover_letter' : 'resume_builder'; const response = await generateAI(req, tool, built.prompt, { systemInstruction: built.systemInstruction }); const usageDb = readDb(); usageDb.usage[usageId] ||= {}; usageDb.usage[usageId][today] ||= {}; usageDb.usage[usageId][today].career_generations = Number(usageDb.usage[usageId][today].career_generations || 0) + 1; writeDb(usageDb); res.json({ output: String(response.text || '').trim() }); } catch (error: any) { if (error instanceof CareerValidationError) return res.status(error.status).json({ error: error.message }); const safe = safeAIError(error); res.status(safe.status === 499 ? 408 : safe.status).json({ error: safe.message, code: safe.code }); } });
 app.get('/api/business/config', (req, res) => {
   const db = readDb();
   const userId = getUserId(req);
@@ -1313,7 +1331,7 @@ app.post('/api/business/generate', async (req, res) => {
     const used = Number(db.usage[usageId][today].business_generations || 0);
     const limit = Number(plan === 'pro' ? db.config.business_pro_daily_generation_limit || 100 : db.config.business_daily_generation_limit || 10);
     if (limit > 0 && used >= limit) {
-      return res.status(429).json({ error: 'Daily Business Studio limit reached. Your brief is preserved.', code: 'BUSINESS_LIMIT', usage: { used, limit } });
+      return res.status(429).json({ error: 'You have reached the limit of your current plan.', code: 'PLAN_LIMIT_REACHED' });
     }
 
     if (req.body.brandKitId) {
