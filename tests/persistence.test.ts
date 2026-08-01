@@ -7,14 +7,16 @@ import express from 'express';
 import type { Pool } from 'pg';
 import { DataType, newDb } from 'pg-mem';
 import request from 'supertest';
-import { resolvePersistenceConfig, PersistenceConfigurationError } from '../server/persistence/config.js';
+import { resolvePersistenceConfig } from '../server/persistence/config.js';
 import { normalizeApplicationDatabase } from '../server/persistence/defaultDatabase.js';
 import { ApplicationPersistence } from '../server/persistence/index.js';
 import { JsonDatabaseAdapter } from '../server/persistence/json.js';
+import { MemoryDatabaseAdapter } from '../server/persistence/memory.js';
 import { mergeLegacyData } from '../server/persistence/merge.js';
 import { migrationStatus, runSchemaMigrations } from '../server/persistence/migrations.js';
-import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError, PersistenceUnavailableError, previewLegacyJsonImport, verifyPostgresRuntime } from '../server/persistence/postgres.js';
+import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError, PersistenceUnavailableError, previewLegacyJsonImport, synchronizeAdminProjections, verifyPostgresRuntime } from '../server/persistence/postgres.js';
 import { hashPassword } from '../server/platform.js';
+import { PostgresAdminRepository } from '../server/admin.js';
 
 function memoryPool() {
   const database = newDb({ autoCreateForeignKeyIndices: true, noAstCoverageCheck: true });
@@ -24,12 +26,51 @@ function memoryPool() {
   return new adapter.Pool() as unknown as Pool;
 }
 
-test('production persistence requires PostgreSQL and never falls back to JSON', () => {
-  assert.throws(() => resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'json' }, 'db.json'), (error: any) => error instanceof PersistenceConfigurationError && error.code === 'POSTGRES_REQUIRED_IN_PRODUCTION');
-  assert.throws(() => resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres' }, 'db.json'), (error: any) => error instanceof PersistenceConfigurationError && error.code === 'DATABASE_URL_REQUIRED');
+test('production prefers PostgreSQL and uses memory when DATABASE_URL is unavailable', async () => {
+  const emptyProduction = resolvePersistenceConfig({ NODE_ENV: 'production' }, 'db.json');
+  assert.equal(emptyProduction.provider, 'memory');
+  assert.equal(emptyProduction.fallbackReason, 'missing_database_url');
+  const missingPostgres = resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres' }, 'db.json');
+  assert.equal(missingPostgres.provider, 'memory');
+  assert.equal(missingPostgres.fallbackReason, 'missing_database_url');
+  assert.equal(resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'json' }, 'db.json').provider, 'memory');
   const config = resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres', DATABASE_URL: 'server-only-placeholder', DATABASE_SSL: 'verify-full' }, 'db.json');
   assert.equal(config.provider, 'postgres');
   assert.deepEqual(config.ssl, { rejectUnauthorized: true });
+  const persistence = new ApplicationPersistence({ NODE_ENV: 'production' }, 'unused.json');
+  await persistence.initialize();
+  assert.equal(persistence.provider, 'memory');
+});
+
+test('failed PostgreSQL initialization falls back to process-local memory', async () => {
+  const failingPostgres: any = {
+    provider: 'postgres',
+    initialize: async () => { throw new PersistenceUnavailableError(); },
+    load: async () => { throw new PersistenceUnavailableError(); },
+    commit: async () => { throw new PersistenceUnavailableError(); },
+    close: async () => undefined,
+  };
+  const persistence = new ApplicationPersistence({
+    NODE_ENV: 'production',
+    PERSISTENCE_PROVIDER: 'postgres',
+    DATABASE_URL: 'server-only-placeholder',
+  }, 'unused.json', failingPostgres);
+  await persistence.initialize();
+  assert.equal(persistence.provider, 'memory');
+  await persistence.runStandalone(database => {
+    database.config.fallback = true;
+    persistence.write(database);
+  });
+  assert.equal(await persistence.runStandalone(database => database.config.fallback), true);
+});
+
+test('memory persistence supports request snapshots without writing a file', async () => {
+  const adapter = new MemoryDatabaseAdapter();
+  await adapter.initialize();
+  const snapshot = await adapter.load();
+  snapshot.data.config.memory = true;
+  await adapter.commit(snapshot, snapshot.data);
+  assert.equal((await adapter.load()).data.config.memory, true);
 });
 
 test('PostgreSQL persistence never creates or writes the JSON fallback file', async () => {
@@ -121,6 +162,27 @@ test('request middleware commits before returning a successful response', async 
   }
 });
 
+test('public plan definitions bypass unavailable persistence at request time', async () => {
+  const unavailableAdapter: any = {
+    provider: 'postgres',
+    initialize: async () => undefined,
+    load: async () => { throw new PersistenceUnavailableError(); },
+    commit: async () => undefined,
+    close: async () => undefined,
+  };
+  const persistence = new ApplicationPersistence({
+    NODE_ENV: 'production',
+    PERSISTENCE_PROVIDER: 'postgres',
+    DATABASE_URL: 'server-only-placeholder',
+  }, 'unused.json', unavailableAdapter);
+  const app = express();
+  app.use(persistence.middleware());
+  app.get('/api/pricing/plans', (_request, response) => response.json({ plans: ['registry-owned'] }));
+  app.get('/api/account', (_request, response) => response.json(persistence.read()));
+  await request(app).get('/api/pricing/plans').expect(200, { plans: ['registry-owned'] });
+  await request(app).get('/api/account').expect(503).expect(response => assert.equal(response.body.code, 'PERSISTENCE_UNAVAILABLE'));
+});
+
 test('request middleware replaces an uncommitted success with a safe conflict', async () => {
   const initial = normalizeApplicationDatabase({});
   const conflictingAdapter: any = {
@@ -149,10 +211,10 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
   try {
     const initialStatus = await migrationStatus(pool);
     assert.deepEqual(initialStatus.applied, []);
-    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
+    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics']);
     const firstMigration = await runSchemaMigrations(pool);
     const secondMigration = await runSchemaMigrations(pool);
-    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
+    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics']);
     assert.deepEqual(secondMigration.applied, []);
 
     const password = hashPassword('migration-password', 'abcdefabcdefabcdefabcdefabcdefab');
@@ -206,5 +268,55 @@ test('PostgreSQL commits allow independent stores and reject same-store lost upd
     const saved = await loadPostgresSnapshot(pool);
     assert.equal(saved.data.users.user.name, 'First');
     assert.equal(saved.data.documents.user[0].id, 'doc-1');
+  } finally { await pool.end(); }
+});
+
+test('PostgreSQL projects recurring subscriptions and idempotent event receipts into constrained billing tables', async () => {
+  const pool = memoryPool();
+  try {
+    await runSchemaMigrations(pool);
+    await importLegacyJson(pool, { users: {}, documents: {}, config: {}, usage: {} }, 'billing-projection-seed', 'test');
+    const snapshot = await loadPostgresSnapshot(pool); const now = new Date().toISOString();
+    snapshot.data.subscriptions.subscription = { id: 'subscription', userId: 'user', workspaceId: 'workspace', tenantType: 'personal', tenantId: 'user', planId: 'pro', internalPlanKey: 'pro', billingMode: 'recurring_subscription', provider: 'razorpay', providerPlanId: 'plan_starter', providerSubscriptionId: 'provider_subscription', status: 'active', quantity: 1, billingInterval: 'monthly', amountMinor: 9900, currency: 'INR', activatedAt: now, currentPeriodStart: now, currentPeriodEnd: new Date(Date.now() + 86_400_000).toISOString(), latestPaymentId: 'payment_unique', createdAt: now, updatedAt: now };
+    snapshot.data.subscriptionEvents.event = { id: 'event', subscriptionId: 'subscription', providerEventId: 'provider_event', eventType: 'subscription.activated', providerCreatedAt: now, payloadHash: 'hash-only', processingStatus: 'processed', processedAt: now, createdAt: now };
+    snapshot.data.subscriptionPayments.payment = { id: 'payment', subscriptionId: 'subscription', userId: 'user', workspaceId: 'workspace', tenantType: 'personal', tenantId: 'user', internalPlanKey: 'pro', billingType: 'initial_subscription_payment', provider: 'razorpay', providerPaymentId: 'payment_unique', providerSubscriptionId: 'provider_subscription', amountMinor: 9900, expectedAmountPaise: 9900, currency: 'INR', status: 'captured', signatureVerified: true, billingEnvironment: 'test', capturedAt: now, createdAt: now, updatedAt: now };
+    snapshot.data.billingReconciliationRuns = { run: { id: 'run', billingEnvironment: 'test', status: 'completed', recordsChecked: 1, recordsUnchanged: 1, recordsSynchronized: 0, recordsAttention: 0, errorCount: 0, startedAt: now, completedAt: now, createdAt: now } };
+    await commitPostgresSnapshot(pool, snapshot, snapshot.data);
+    const subscription = await pool.query('SELECT provider_subscription_id, amount_paise FROM gxa_billing_subscriptions WHERE id = $1', ['subscription']);
+    const event = await pool.query('SELECT provider_event_id, payload_hash FROM gxa_billing_subscription_events WHERE id = $1', ['event']);
+    const payment = await pool.query('SELECT provider_payment_id, verification_state, billing_type FROM gxa_billing_payments WHERE id = $1', ['payment']);
+    const reconciliation = await pool.query('SELECT status, records_checked FROM gxa_billing_reconciliation_runs WHERE id = $1', ['run']);
+    assert.deepEqual(subscription.rows[0], { provider_subscription_id: 'provider_subscription', amount_paise: 9900 });
+    assert.deepEqual(event.rows[0], { provider_event_id: 'provider_event', payload_hash: 'hash-only' });
+    assert.deepEqual(payment.rows[0], { provider_payment_id: 'payment_unique', verification_state: 'verified', billing_type: 'initial_subscription_payment' });
+    assert.deepEqual(reconciliation.rows[0], { status: 'completed', records_checked: 1 });
+  } finally { await pool.end(); }
+});
+
+test('PostgreSQL admin projection supports server search, filters, pagination, details and audit without secrets', async () => {
+  const pool = memoryPool();
+  try {
+    await runSchemaMigrations(pool);
+    const now = new Date().toISOString(); const future = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    const password = hashPassword('admin-projection-password', '11111111111111111111111111111111');
+    await importLegacyJson(pool, {
+      users: {
+        owner: { id: 'owner', name: 'Owner Admin', email: 'owner@example.test', password, role: 'super_admin', status: 'active', subscription: 'free', emailVerifiedAt: now, createdAt: now, updatedAt: now, profile: { company: 'GXA' }, preferences: {} },
+        paid: { id: 'paid', name: 'Paid Member', email: 'paid@example.test', password, role: 'user', status: 'active', subscription: 'free', emailVerifiedAt: null, createdAt: now, updatedAt: now, profile: { company: 'Customer' }, preferences: {} },
+      }, projects: { paid: [{ id: 'project', name: 'Real project', createdAt: now }] }, documents: { paid: [{ id: 'document', name: 'Real document', createdAt: now }] }, chats: {}, savedPrompts: {}, config: {}, usage: {},
+    }, 'admin-projection-seed', 'test');
+    const snapshot = await loadPostgresSnapshot(pool);
+    snapshot.data.subscriptions.paid = { id: 'paid-subscription', userId: 'paid', workspaceId: 'paid', tenantType: 'personal', tenantId: 'paid', planId: 'pro', status: 'active', sourcePaymentId: 'payment', currentPeriodStart: now, currentPeriodEnd: future, activatedAt: now, createdAt: now, updatedAt: now };
+    snapshot.data.adminAuditEvents.push({ id: 'audit-1', actorUserId: 'owner', actorRole: 'super_admin', action: 'users.exported', targetType: 'users', targetId: 'filtered', reason: 'Test export', metadata: { rowCount: 1 }, createdAt: now });
+    await commitPostgresSnapshot(pool, snapshot, snapshot.data);
+    const client = await pool.connect(); try { await synchronizeAdminProjections(client, snapshot.data); } finally { client.release(); }
+
+    const repository = new PostgresAdminRepository(pool);
+    const users = await repository.listUsers({ search: 'Paid', status: 'active', verified: 'false', plan: 'pro', subscriptionStatus: 'active', role: 'user', signupFrom: '', signupTo: '', activeFrom: '', activeTo: '', sort: 'newest', page: 1, pageSize: 25 });
+    assert.equal(users.pagination.total, 1); assert.equal(users.users[0].email, 'paid@example.test'); assert.equal(users.users[0].projectsCount, 1); assert.equal(users.users[0].documentsCount, 1);
+    assert.equal('password' in users.users[0], false); assert.equal('tokenHash' in users.users[0], false);
+    const detail = await repository.userDetail('paid'); assert.equal(detail?.recentProjects[0].name, 'Real project'); assert.equal(detail?.recentDocuments[0].name, 'Real document');
+    const audit = await repository.audit({ action: 'users.exported', page: '1', pageSize: '25' }); assert.equal(audit.events.length, 1); assert.deepEqual(audit.events[0].metadata, { rowCount: 1 });
+    const projectionCount = await pool.query('SELECT count(*)::int AS count FROM gxa_admin_users'); assert.equal(projectionCount.rows[0].count, 2);
   } finally { await pool.end(); }
 });

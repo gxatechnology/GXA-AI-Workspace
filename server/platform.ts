@@ -43,8 +43,24 @@ const emptyStores: Record<string, any> = {
   sessions: {}, subscriptions: {}, usageEvents: [], quotaReservations: {}, auditEvents: [], securityEvents: [], passwordResetTokens: {}, emailVerificationTokens: {}, savedPrompts: {}, userWorkspaceStates: {},
   apiKeys: {}, webhookEndpoints: {}, webhookDeliveries: {}, automations: {}, automationExecutions: {},
   featureFlags: {}, dataExports: {}, deletionRequests: {}, idempotencyRecords: {}, providerHealth: {}, jobs: {}, deadLetterJobs: {},
-  pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, contactSalesLeads: {}, billingEvents: [], aiProviderRequests: [],
+  pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, subscriptionEvents: {}, subscriptionPayments: {}, contactSalesLeads: {}, billingEvents: [], aiProviderRequests: [], adminAuditEvents: [],
 };
+
+export type CanonicalAccountRole = 'user' | 'admin' | 'super_admin';
+export type CanonicalAccountStatus = 'active' | 'suspended' | 'deletion_pending' | 'deleted';
+
+export function normalizeAccountRole(role: unknown, legacyAdminRole?: unknown): CanonicalAccountRole {
+  const accountRole = String(role || '').trim().toLowerCase().replaceAll('-', '_');
+  const adminRole = String(legacyAdminRole || '').trim().toLowerCase().replaceAll('-', '_');
+  if (['superadmin', 'super_admin'].includes(accountRole) || adminRole === 'super_admin') return 'super_admin';
+  if (['admin', 'platformadmin', 'platform_admin'].includes(accountRole) || Boolean(adminRole)) return 'admin';
+  return 'user';
+}
+
+export function normalizeAccountStatus(status: unknown): CanonicalAccountStatus {
+  const value = String(status || 'active').trim().toLowerCase();
+  return ['active', 'suspended', 'deletion_pending', 'deleted'].includes(value) ? value as CanonicalAccountStatus : 'active';
+}
 
 export function personalWorkspaceId(userId: string) { return `personal_${hashSecret(userId).slice(0, 20)}`; }
 
@@ -69,7 +85,13 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
       user.password = hashPassword(user.password);
       changes.push(`hash-password:${user.id}`);
     }
-    user.status ||= 'active';
+    const canonicalRole = normalizeAccountRole(user.role, user.adminRole);
+    if (user.role !== canonicalRole) { user.role = canonicalRole; changes.push(`canonical-user-role:${user.id}`); }
+    const canonicalStatus = normalizeAccountStatus(user.status);
+    if (user.status !== canonicalStatus) { user.status = canonicalStatus; changes.push(`canonical-user-status:${user.id}`); }
+    user.suspendedAt ??= null;
+    user.suspendedBy ??= null;
+    user.suspensionReason ??= null;
     user.createdAt ||= nowIso();
     user.updatedAt ||= user.createdAt;
     user.emailVerifiedAt ||= null;
@@ -84,8 +106,8 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
   }
   for (const flag of DEFAULT_FEATURE_FLAGS) if (!db.featureFlags[flag.key]) db.featureFlags[flag.key] = { ...flag, target: 'global', createdAt: nowIso(), updatedAt: nowIso() };
   const previousVersion = Number(db.schemaVersion || 0);
-  if (previousVersion < 14) { db.schemaVersion = 14; changes.push(`schema:${previousVersion}->14`); }
-  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 14 };
+  if (previousVersion < 16) { db.schemaVersion = 16; changes.push(`schema:${previousVersion}->16`); }
+  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 16 };
 }
 
 export function createSession(db: any, userId: string, meta: { userAgent?: string; ipHash?: string } = {}) {
@@ -112,7 +134,7 @@ export function resolveSession(db: any, token: string) {
 }
 
 export function publicUser(user: any, token?: string) {
-  return { id: user.id, name: user.name, email: user.email, avatar: user.profile?.avatar || null, phone: user.profile?.phone || '', company: user.profile?.company || '', timezone: user.preferences?.timezone || 'Asia/Kolkata', language: user.preferences?.language || 'English', emailVerified: Boolean(user.emailVerifiedAt), subscription: normalizePlanId(user.subscription), role: user.role || 'User', adminRole: user.adminRole || null, status: user.status || 'active', ...(token ? { sessionToken: token } : {}) };
+  return { id: user.id, name: user.name, email: user.email, avatar: user.profile?.avatar || null, phone: user.profile?.phone || '', company: user.profile?.company || '', timezone: user.preferences?.timezone || 'Asia/Kolkata', language: user.preferences?.language || 'English', emailVerified: Boolean(user.emailVerifiedAt), subscription: normalizePlanId(user.subscription), role: normalizeAccountRole(user.role, user.adminRole), status: normalizeAccountStatus(user.status), ...(token ? { sessionToken: token } : {}) };
 }
 
 export function rolePermissions(roleId: string): PlatformPermission[] {
@@ -121,11 +143,24 @@ export function rolePermissions(roleId: string): PlatformPermission[] {
 
 export function resolvePlanState(db: any, tenantType: TenantType, tenantId: string, user: any) {
   const subscriptions = Object.values<any>(db.subscriptions || {}).filter(item => item.tenantType === tenantType && item.tenantId === tenantId).sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '0') - Date.parse(a.updatedAt || a.createdAt || '0'));
-  const subscription = subscriptions.find(item => ['active', 'trialing'].includes(item.status) && (!item.currentPeriodEnd || Date.parse(item.currentPeriodEnd) > Date.now()));
+  const paidStatuses = new Set(['active', 'trialing', 'pending', 'halted', 'paused', 'cancelled', 'canceled', 'completed']);
+  const valid = subscriptions.filter(item => {
+    const planId = resolvePlanKey(item.planId || item.internalPlanKey);
+    const periodEnd = Date.parse(item.currentPeriodEnd || '');
+    const providerConfirmed = Boolean(item.activatedAt || item.sourcePaymentId || item.latestPaymentId || ['active', 'trialing'].includes(String(item.status || '')));
+    return Boolean(planId && planId !== 'free' && paidStatuses.has(String(item.status || '')) && providerConfirmed && Number.isFinite(periodEnd) && periodEnd > Date.now());
+  }).sort((left, right) => {
+    const planDifference = PLAN_REGISTRY[normalizePlanId(right.planId)].rank - PLAN_REGISTRY[normalizePlanId(left.planId)].rank;
+    return planDifference || Date.parse(right.currentPeriodEnd || '0') - Date.parse(left.currentPeriodEnd || '0');
+  });
+  const subscription = valid[0];
   if (subscription) return { planId: normalizePlanId(subscription.planId), subscription, status: String(subscription.status) };
   const latest = subscriptions[0] || null;
-  if (latest && ['active', 'trialing'].includes(latest.status) && latest.currentPeriodEnd && Date.parse(latest.currentPeriodEnd) <= Date.now()) return { planId: 'free' as PlanId, subscription: latest, status: 'expired' };
-  if (latest && ['canceled', 'expired', 'past_due', 'paused', 'incomplete', 'failed'].includes(latest.status)) return { planId: 'free' as PlanId, subscription: latest, status: String(latest.status) };
+  if (latest) {
+    const expired = latest.currentPeriodEnd && Date.parse(latest.currentPeriodEnd) <= Date.now();
+    const explicitFailure = ['past_due', 'failed', 'incomplete'].includes(String(latest.status || ''));
+    return { planId: 'free' as PlanId, subscription: latest, status: explicitFailure ? String(latest.status) : expired ? 'expired' : String(latest.status || 'inactive') };
+  }
   const planId = normalizePlanId(tenantType === 'personal' ? user.subscription : db.organizations?.[tenantId]?.planId);
   return { planId, subscription: latest, status: planId === 'free' ? 'free' : 'active' };
 }
@@ -141,7 +176,7 @@ const entitlementsWithFlags = (planId: PlanId, flags: Record<string, boolean>) =
 export interface TenantContext {
   user: any; session: any; workspace: any; tenantType: TenantType; tenantId: string; organization: any | null;
   membership: any | null; role: string; permissions: PlatformPermission[]; planId: PlanId;
-  entitlements: EntitlementKey[]; limits: Record<string, number>; featureFlags: Record<string, boolean>;
+  entitlements: EntitlementKey[]; limits: Record<string, number>; featureFlags: Record<string, boolean>; activityUpdated?: boolean;
 }
 
 export function resolveTenantContext(db: any, token: string): TenantContext {
@@ -164,8 +199,9 @@ export function resolveTenantContext(db: any, token: string): TenantContext {
   const planId = resolvedPlan(db, tenantType, tenantId, auth.user);
   const plan = PLAN_REGISTRY[planId];
   const featureFlags = resolvedFeatureFlags(db);
-  if (Date.now() - Date.parse(auth.session.lastActiveAt || auth.session.createdAt || '0') > 15 * 60_000) auth.session.lastActiveAt = nowIso();
-  return { user: auth.user, session: auth.session, workspace, tenantType, tenantId, organization: tenantType === 'organization' ? organization : null, membership: tenantType === 'organization' ? membership : null, role, permissions, planId, entitlements: entitlementsWithFlags(planId, featureFlags), limits: plan.limits, featureFlags };
+  const activityUpdated = Date.now() - Date.parse(auth.user.lastActiveAt || auth.session.lastActiveAt || auth.session.createdAt || '0') > 15 * 60_000;
+  if (activityUpdated) { const activeAt = nowIso(); auth.session.lastActiveAt = activeAt; auth.user.lastActiveAt = activeAt; }
+  return { user: auth.user, session: auth.session, workspace, tenantType, tenantId, organization: tenantType === 'organization' ? organization : null, membership: tenantType === 'organization' ? membership : null, role, permissions, planId, entitlements: entitlementsWithFlags(planId, featureFlags), limits: plan.limits, featureFlags, activityUpdated };
 }
 
 export const tenantStoreKey = (context: TenantContext) => context.tenantType === 'personal' ? context.user.id : `org:${context.tenantId}`;
@@ -173,14 +209,23 @@ export function requirePermission(context: TenantContext, permission: PlatformPe
 export function requireEntitlement(context: TenantContext, entitlement: EntitlementKey) { if (!context.entitlements.includes(entitlement)) throw new EntitlementError(); }
 
 export function adminScopes(user: any): string[] {
-  if (user.role === 'SuperAdmin') return ['*'];
-  return ADMIN_ROLES[user.adminRole as keyof typeof ADMIN_ROLES]?.scopes || [];
+  const role = normalizeAccountRole(user?.role, user?.adminRole);
+  if (role === 'super_admin') return ['*'];
+  if (role === 'admin') return ['users.read', 'audit.read'];
+  return ADMIN_ROLES[user?.adminRole as keyof typeof ADMIN_ROLES]?.scopes || [];
 }
 export function requireAdminScope(user: any, scope: string) { const scopes = adminScopes(user); if (!scopes.includes('*') && !scopes.includes(scope)) throw new AuthorizationError('Administrative permission required.'); }
+export function requireAdminRead(user: any) { const role = normalizeAccountRole(user?.role, user?.adminRole); if (role !== 'admin' && role !== 'super_admin') throw new AuthorizationError('Administrative permission required.'); return role; }
+export function requireSuperAdmin(user: any) { const role = normalizeAccountRole(user?.role, user?.adminRole); if (role !== 'super_admin') throw new AuthorizationError('Super Admin permission required.'); return role; }
 
 export function audit(db: any, event: { tenantId: string; actorId: string; actorType?: string; action: string; resourceType: string; resourceId: string; metadata?: Record<string, any>; ipHash?: string; userAgentSummary?: string }) {
   const record = { id: idFor('audit'), tenantId: event.tenantId, actorId: event.actorId, actorType: event.actorType || 'user', action: safeText(event.action, 100), resourceType: safeText(event.resourceType, 80), resourceId: safeText(event.resourceId, 160), metadata: event.metadata || {}, ipHash: safeText(event.ipHash, 80), userAgentSummary: safeText(event.userAgentSummary, 120), createdAt: nowIso() };
   db.auditEvents ||= []; db.auditEvents.push(record); return record;
+}
+export function adminAudit(db: any, event: { actorUserId?: string | null; actorRole: CanonicalAccountRole | 'system'; action: string; targetType: string; targetId: string; reason?: string; metadata?: Record<string, unknown>; ipHash?: string; userAgent?: string }) {
+  const metadata = Object.fromEntries(Object.entries(event.metadata || {}).filter(([key, value]) => !/password|secret|token|hash|credential|raw/i.test(key) && ['string', 'number', 'boolean'].includes(typeof value)));
+  const record = { id: idFor('admin_audit'), actorUserId: event.actorUserId || null, actorRole: event.actorRole, action: safeText(event.action, 100), targetType: safeText(event.targetType, 80), targetId: safeText(event.targetId, 160), reason: safeText(event.reason, 500) || null, metadata, ipAddressHash: safeText(event.ipHash, 80) || null, userAgent: safeText(event.userAgent, 180) || null, createdAt: nowIso() };
+  db.adminAuditEvents ||= []; db.adminAuditEvents.push(record); return record;
 }
 export function securityEvent(db: any, event: { actorId?: string; type: string; outcome: string; metadata?: Record<string, any> }) { const record = { id: idFor('security'), actorId: event.actorId || null, type: safeText(event.type, 100), outcome: safeText(event.outcome, 40), metadata: event.metadata || {}, createdAt: nowIso() }; db.securityEvents ||= []; db.securityEvents.push(record); return record; }
 

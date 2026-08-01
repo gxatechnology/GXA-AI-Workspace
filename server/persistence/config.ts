@@ -1,6 +1,6 @@
 import type { PoolConfig } from 'pg';
 
-export type PersistenceProvider = 'postgres' | 'json';
+export type PersistenceProvider = 'postgres' | 'json' | 'memory';
 
 export interface PersistenceConfig {
   provider: PersistenceProvider;
@@ -11,6 +11,7 @@ export interface PersistenceConfig {
   ssl: PoolConfig['ssl'];
   jsonFile: string;
   production: boolean;
+  fallbackReason?: 'missing_database_url';
 }
 
 export class PersistenceConfigurationError extends Error {
@@ -43,17 +44,19 @@ function sslConfiguration(value: string | undefined): PoolConfig['ssl'] {
 export function resolvePersistenceConfig(env: NodeJS.ProcessEnv, jsonFile: string): PersistenceConfig {
   const production = env.NODE_ENV === 'production' || Boolean(env.VERCEL);
   const requested = String(env.PERSISTENCE_PROVIDER || '').trim().toLowerCase();
-  const inferred = env.DATABASE_URL ? 'postgres' : 'json';
-  const provider = (requested || inferred) as PersistenceProvider;
+  const inferred: PersistenceProvider = env.DATABASE_URL ? 'postgres' : production ? 'memory' : 'json';
+  let provider = (requested || inferred) as PersistenceProvider;
+  let fallbackReason: PersistenceConfig['fallbackReason'] = production && !env.DATABASE_URL ? 'missing_database_url' : undefined;
 
-  if (!['postgres', 'json'].includes(provider)) {
-    throw new PersistenceConfigurationError('PERSISTENCE_PROVIDER must be postgres or json.');
+  if (!['postgres', 'json', 'memory'].includes(provider)) {
+    throw new PersistenceConfigurationError('PERSISTENCE_PROVIDER must be postgres, json, or memory.');
   }
-  if (production && provider !== 'postgres') {
-    throw new PersistenceConfigurationError('PostgreSQL persistence is required in production.', 'POSTGRES_REQUIRED_IN_PRODUCTION');
+  if (production && provider === 'json') {
+    provider = 'memory';
   }
   if (provider === 'postgres' && !env.DATABASE_URL) {
-    throw new PersistenceConfigurationError('DATABASE_URL is required when PostgreSQL persistence is enabled.', 'DATABASE_URL_REQUIRED');
+    provider = 'memory';
+    fallbackReason = 'missing_database_url';
   }
 
   return {
@@ -65,5 +68,6 @@ export function resolvePersistenceConfig(env: NodeJS.ProcessEnv, jsonFile: strin
     ssl: provider === 'postgres' ? sslConfiguration(env.DATABASE_SSL) : false,
     jsonFile,
     production,
+    fallbackReason,
   };
 }

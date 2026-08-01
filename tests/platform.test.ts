@@ -25,9 +25,9 @@ test('platform migration is additive, password-safe and idempotent', () => {
   const preview = applyPlatformMigration(original, { dryRun: true });
   assert.equal(original.schemaVersion, undefined);
   assert.deepEqual(original.projects.untouched, [{ id: 'p1' }]);
-  assert.equal(preview.toVersion, 14);
+  assert.equal(preview.toVersion, 16);
   const applied = applyPlatformMigration(original);
-  assert.equal(applied.db.schemaVersion, 14);
+  assert.equal(applied.db.schemaVersion, 16);
   assert.notEqual(applied.db.users['owner@example.com'].password, 'long-enough-password');
   assert.ok(applied.db.users['owner@example.com'].password.startsWith('scrypt$'));
   assert.equal(verifyPassword('long-enough-password', applied.db.users['owner@example.com'].password), true);

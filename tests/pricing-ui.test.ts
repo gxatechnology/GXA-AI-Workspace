@@ -90,3 +90,11 @@ test('frontend contains no localStorage checkout authority or hardcoded paid-pri
   walk(sourceRoot); const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n');
   assert.doesNotMatch(source, /gxa_checkout_plan/); assert.doesNotMatch(source, /['"`]\u20B9(?:99|149|499)(?:\/month)?['"`]/); assert.doesNotMatch(source, /pricing_(?:pro|business)(?:_plus|_pro|_monthly|_yearly)?/);
 });
+
+test('Razorpay Checkout sends only the selected plan and the three provider verification fields', () => {
+  const source = ['src/components/workspaces/AccountPlan.tsx', 'src/components/workspaces/EnterprisePlatform.tsx'].map(file => fs.readFileSync(path.resolve(file), 'utf8')).join('\n');
+  assert.match(source, /JSON\.stringify\(\{ planKey: selectedPlan\.key \}\)/);
+  assert.match(source, /razorpay_order_id: response\.razorpay_order_id, razorpay_payment_id: response\.razorpay_payment_id, razorpay_signature: response\.razorpay_signature/);
+  assert.doesNotMatch(source, /RAZORPAY_KEY_SECRET|RAZORPAY_WEBHOOK_SECRET|NEXT_PUBLIC_RAZORPAY|VITE_RAZORPAY/);
+  assert.match(source, /Invoice generation is not configured yet/);
+});
