@@ -41,7 +41,7 @@ export interface UsageStats {
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
   try {
-    const res = await fetch('/api/admin/config');
+    const res = await fetch('/api/config/public');
     if (res.ok) {
       const data = await res.json();
       return data.config;

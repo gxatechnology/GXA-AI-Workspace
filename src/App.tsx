@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Menu, Moon, Search, Sun, X, Zap } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 import Sidebar from './components/Sidebar';
@@ -14,6 +14,10 @@ import { PublicPlan, UpgradeRequest } from './types/pricing';
 import { applyTheme, getInitialTheme, Theme } from './theme';
 import { authHeaders, installPlanLimitInterceptor, storedUser } from './utils/auth';
 import { buildWorkspaceHash, fetchCurrentPlan, fetchPlanSelection, savePlanSelection } from './utils/pricing';
+import { isPublicWebsitePath } from './public/content';
+
+const PublicSite = lazy(() => import('./components/public/PublicSite'));
+const AdminPortal = lazy(() => import('./components/admin/AdminPortal'));
 
 const guestUser = { id: 'guest', subscription: 'free', guest: true };
 const workspaceIds = new Set<WorkspaceId>(['home', 'dashboard', ...toolRegistry.map(tool => tool.route)] as WorkspaceId[]);
@@ -34,10 +38,23 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [planLimitOpen, setPlanLimitOpen] = useState(false);
   const isAuthenticated = Boolean(currentUser && !currentUser.guest);
-  const isAdmin = isAuthenticated && (currentUser.role === 'SuperAdmin' || Boolean(currentUser.adminRole));
+  const isAdmin = isAuthenticated && ['admin', 'super_admin'].includes(String(currentUser.role || '').toLowerCase());
+  const adminPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+  const publicWebsite = typeof window !== 'undefined' && isPublicWebsitePath(window.location.pathname, window.location.hash);
 
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => installPlanLimitInterceptor(), []);
+  useEffect(() => {
+    const existing = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (adminPath) {
+      const meta = existing || Object.assign(document.createElement('meta'), { name: 'robots' });
+      meta.setAttribute('content', 'noindex, nofollow, noarchive');
+      meta.dataset.gxaAdminNoindex = 'true';
+      if (!meta.parentNode) document.head.appendChild(meta);
+      return;
+    }
+    if (existing?.dataset.gxaAdminNoindex === 'true') existing.remove();
+  }, [adminPath]);
 
   useEffect(() => {
     const restoredUser = storedUser();
@@ -55,12 +72,13 @@ export default function App() {
     const syncRoute = () => {
       if (window.location.pathname.startsWith('/admin')) {
         setPendingWorkspace('administration');
-        if (isAdmin) { setActiveWorkspace('administration'); setAuthMode(null); }
+        if (isAuthenticated) { setActiveWorkspace('administration'); setAuthMode(null); }
         else setAuthMode('login');
         return;
       }
       const hash = window.location.hash.replace('#/', '').split('?')[0] as WorkspaceId;
       const route = workspaceIds.has(hash) ? hash : 'home';
+      if (route === 'administration') { window.history.replaceState({}, '', '/admin'); setPendingWorkspace(route); setActiveWorkspace(route); setAuthMode(isAuthenticated ? null : 'login'); return; }
       if (isAuthenticatedRoute(route) && !isAuthenticated) {
         setPendingWorkspace(route);
         setAuthMode('login');
@@ -80,15 +98,14 @@ export default function App() {
   const toggleTheme = () => setTheme(value => value === 'light' ? 'dark' : 'light');
 
   const selectWorkspace = (route: WorkspaceId) => {
-    if (route === 'administration' && !isAdmin) { setPendingWorkspace(route); setAuthMode('login'); return; }
+    if (route === 'administration') { setPendingWorkspace(route); setAuthMode(isAuthenticated ? null : 'login'); window.history.pushState({}, '', '/admin'); return; }
     if (isAuthenticatedRoute(route) && !isAuthenticated) { setPendingWorkspace(route); setAuthMode('login'); return; }
     setActiveWorkspace(route); setSidebarOpen(false); setToolsOpen(false);
-    if (route === 'administration') window.history.pushState({}, '', '/admin');
-    else { if (window.location.pathname !== '/') window.history.pushState({}, '', '/'); window.history.replaceState({}, '', buildWorkspaceHash(route)); }
+    if (window.location.pathname !== '/') window.history.pushState({}, '', '/'); window.history.replaceState({}, '', buildWorkspaceHash(route));
   };
 
   const beginAuth = (mode: 'login' | 'register', returnTo: WorkspaceId = activeWorkspace) => { setPendingWorkspace(returnTo); setAuthMode(mode); };
-  const loginSuccess = async (user: any) => { if (user?.guest) { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); setCurrentPlanKey('free'); setAuthMode(null); setPendingWorkspace(null); selectAfterAuth('home'); return; } setCurrentUser(user); localStorage.setItem('gxa_user', JSON.stringify(user)); const [selection, current] = await Promise.all([fetchPlanSelection(user).catch(() => ({ selection: null, plan: null })), fetchCurrentPlan(user).catch(() => null)]); setCurrentPlanKey(current?.currentPlanKey || user.subscription || 'free'); const selectedDestination = selection.plan?.contactSales ? 'pricing' : selection.selection && selection.selection.planKey !== 'free' ? 'billing' : null; const destination = selectedDestination || ((pendingWorkspace && pendingWorkspace !== 'administration') || user.role === 'SuperAdmin' || user.adminRole ? pendingWorkspace : 'home'); setAuthMode(null); setPendingWorkspace(null); selectAfterAuth(destination || 'home'); };
+  const loginSuccess = async (user: any) => { if (user?.guest) { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); setCurrentPlanKey('free'); setAuthMode(null); setPendingWorkspace(null); selectAfterAuth('home'); return; } setCurrentUser(user); localStorage.setItem('gxa_user', JSON.stringify(user)); const [selection, current] = await Promise.all([fetchPlanSelection(user).catch(() => ({ selection: null, plan: null })), fetchCurrentPlan(user).catch(() => null)]); setCurrentPlanKey(current?.currentPlanKey || user.subscription || 'free'); const selectedDestination = selection.plan?.contactSales ? 'pricing' : selection.selection && selection.selection.planKey !== 'free' ? 'billing' : null; const destination = selectedDestination || pendingWorkspace || 'home'; setAuthMode(null); setPendingWorkspace(null); selectAfterAuth(destination); };
   const selectAfterAuth = (route: WorkspaceId) => { setActiveWorkspace(route); window.history.replaceState({}, '', route === 'administration' ? '/admin' : buildWorkspaceHash(route)); };
   const logout = async () => { try { await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders(currentUser), credentials: 'same-origin' }); } finally { localStorage.removeItem('gxa_user'); setCurrentUser(guestUser); setCurrentPlanKey('free'); setActiveWorkspace('home'); window.history.replaceState({}, '', '/'); } };
   const showUpgrade = (request?: Partial<UpgradeRequest>) => { setUpgradeRequest({ featureKey: request?.featureKey || 'account.upgrade', featureName: request?.featureName || activeTool?.name || 'your plan', sourceTool: request?.sourceTool || activeWorkspace, returnRoute: request?.returnRoute || activeWorkspace }); setUpgradeOpen(true); };
@@ -100,15 +117,19 @@ export default function App() {
     selectWorkspace('billing');
   };
 
-  if (!authReady) return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-bold text-slate-500 dark:bg-zinc-950 dark:text-zinc-400" role="status">Restoring your workspace…</div>;
   if (authMode) return <LandingPage onLoginSuccess={loginSuccess} theme={theme} onToggleTheme={toggleTheme} initialAuthMode={authMode} />;
+  if (publicWebsite) return <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-bold text-slate-500 dark:bg-zinc-950 dark:text-zinc-400" role="status">Loading public website…</div>}><PublicSite theme={theme} isAuthenticated={isAuthenticated} onToggleTheme={toggleTheme} onOpenWorkspace={() => window.location.assign('/#/home')} onShowPricing={() => window.location.assign('/#/pricing')} onLogin={() => beginAuth('login', 'home')} onRegister={() => beginAuth('register', 'home')} /></Suspense>;
+  if (!authReady) return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-bold text-slate-500 dark:bg-zinc-950 dark:text-zinc-400" role="status">Restoring your workspace…</div>;
+  if (adminPath && !isAuthenticated) return <LandingPage onLoginSuccess={loginSuccess} theme={theme} onToggleTheme={toggleTheme} initialAuthMode="login" />;
+  if (adminPath && !isAdmin) return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-5 dark:bg-zinc-950"><main className="max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-zinc-800 dark:bg-zinc-900"><h1 className="text-2xl font-black">Administrative access unavailable</h1><p className="mt-3 text-sm leading-6 text-slate-500">Your authenticated account does not have permission to open this area.</p><button onClick={() => { window.history.replaceState({}, '', '/#/home'); setActiveWorkspace('home'); }} className="theme-primary-action mt-6 rounded-xl px-5 py-3 text-sm font-black">Return to workspace</button></main></div>;
+  if (adminPath && isAdmin) return <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-bold text-slate-500 dark:bg-zinc-950 dark:text-zinc-400" role="status">Loading secure administration…</div>}><AdminPortal currentUser={currentUser} theme={theme} onToggleTheme={toggleTheme} onExit={() => { window.history.replaceState({}, '', '/#/dashboard'); setActiveWorkspace('dashboard'); }} onLogout={logout} /></Suspense>;
 
   return <div className="app-shell flex h-screen overflow-hidden font-sans" data-theme={theme}>
     {sidebarOpen && <div className="fixed inset-0 z-50 flex bg-slate-950/55 md:hidden"><Sidebar activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} theme={theme} onToggleTheme={toggleTheme} isAuthenticated={isAuthenticated} onOpenTools={() => setToolsOpen(true)} /><button onClick={() => setSidebarOpen(false)} aria-label="Close navigation" className="m-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-900"><X className="h-5 w-5" /></button></div>}
     <div className="hidden h-screen md:block"><Sidebar activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} theme={theme} onToggleTheme={toggleTheme} collapsed={sidebarCollapsed} isAuthenticated={isAuthenticated} onOpenTools={() => setToolsOpen(true)} onCollapse={() => setSidebarCollapsed(value => !value)} /></div>
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 sm:px-6"><div className="flex min-w-0 items-center gap-3"><button onClick={() => setSidebarOpen(true)} aria-label="Open navigation" className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 md:hidden dark:text-zinc-300 dark:hover:bg-zinc-900"><Menu className="h-5 w-5" /></button><button onClick={() => selectWorkspace('home')} className="flex items-center gap-2 md:hidden"><span className="theme-brand-mark flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-black">GX</span><strong className="hidden text-sm sm:block">GXA AI Workspace</strong></button><div className="hidden min-w-0 md:block"><strong className="block truncate text-sm">{activeWorkspace === 'home' ? 'Home Workspace' : activeTool?.name || 'GXA AI Workspace'}</strong><span className="block truncate text-[10px] text-slate-400">{activeWorkspace === 'home' ? 'Create, write and work smarter with AI' : activeTool?.description}</span></div></div>
-        {!isAuthenticated ? <nav aria-label="Account" className="flex items-center gap-1 sm:gap-2"><button onClick={() => selectWorkspace('pricing')} className="rounded-lg px-2 py-2 text-xs font-bold text-slate-600 hover:text-teal-600 sm:px-3 dark:text-zinc-300">Pricing</button><button onClick={() => beginAuth('login')} className="rounded-lg px-2 py-2 text-xs font-bold sm:px-3">Login</button><button onClick={() => beginAuth('register')} className="theme-primary-action rounded-xl px-3 py-2 text-xs font-black sm:px-4">Register</button></nav> : <div className="flex min-w-0 items-center gap-1 sm:gap-2"><WorkspaceSwitcher currentUser={currentUser} onOpenPlatform={() => selectWorkspace('platform')} /><button onClick={() => setToolsOpen(true)} aria-label="Search tools" className="hidden rounded-xl p-2 text-slate-500 hover:bg-slate-100 sm:block dark:text-zinc-400 dark:hover:bg-zinc-900"><Search className="h-4 w-4" /></button><span className="hidden rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase text-slate-600 xl:block dark:bg-zinc-900 dark:text-zinc-300">{currentPlanKey === 'business-pro' ? 'Business Pro' : currentPlanKey === 'pro' ? 'Starter' : currentPlanKey === 'pro_plus' ? 'Pro' : 'Free'} plan</span><button onClick={() => currentPlanKey === 'free' ? selectWorkspace('pricing') : selectWorkspace('billing')} className="theme-primary-action hidden items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black md:flex"><Zap className="h-3.5 w-3.5" />{currentPlanKey === 'free' ? 'Upgrade' : 'Manage Plan'}</button><button onClick={toggleTheme} aria-label={theme === 'light' ? 'Use dark theme' : 'Use light theme'} aria-pressed={theme === 'dark'} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-900">{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}</button><ProfileMenu user={currentUser} onSelect={selectWorkspace} onLogout={logout} /></div>}
+        {!isAuthenticated ? <nav aria-label="Account" className="flex items-center gap-1 sm:gap-2"><button onClick={() => selectWorkspace('pricing')} className="rounded-lg px-2 py-2 text-xs font-bold text-slate-600 hover:text-teal-600 sm:px-3 dark:text-zinc-300">Pricing</button><button onClick={() => beginAuth('login')} className="rounded-lg px-2 py-2 text-xs font-bold sm:px-3">Login</button><button onClick={() => beginAuth('register')} className="theme-primary-action rounded-xl px-3 py-2 text-xs font-black sm:px-4">Register</button></nav> : <div className="flex min-w-0 items-center gap-1 sm:gap-2"><WorkspaceSwitcher currentUser={currentUser} onOpenPlatform={() => selectWorkspace('platform')} /><button onClick={() => setToolsOpen(true)} aria-label="Search tools" className="hidden rounded-xl p-2 text-slate-500 hover:bg-slate-100 sm:block dark:text-zinc-400 dark:hover:bg-zinc-900"><Search className="h-4 w-4" /></button><span className="hidden rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase text-slate-600 xl:block dark:bg-zinc-900 dark:text-zinc-300">{currentPlanKey === 'business-pro' ? 'Business Pro' : currentPlanKey === 'pro' ? 'Starter' : currentPlanKey === 'pro_plus' ? 'Pro' : 'Free'} plan</span><button onClick={() => currentPlanKey === 'free' ? selectWorkspace('pricing') : selectWorkspace('billing')} className="theme-primary-action hidden items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black md:flex"><Zap className="h-3.5 w-3.5" />{currentPlanKey === 'free' ? 'Upgrade' : 'Manage Plan'}</button><button onClick={toggleTheme} aria-label={theme === 'light' ? 'Use dark theme' : 'Use light theme'} aria-pressed={theme === 'dark'} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-900">{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}</button><ProfileMenu user={currentUser} onSelect={selectWorkspace} onLogout={logout} onAdmin={isAdmin ? () => selectWorkspace('administration') : undefined} /></div>}
       </header>
       <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-3 dark:bg-zinc-950 sm:p-5 lg:p-7"><WorkspaceContent activeWorkspace={activeWorkspace} onSelectWorkspace={selectWorkspace} onOpenUpgradeModal={showUpgrade} onPlanSelected={handlePlanSelected} onOpenTools={() => setToolsOpen(true)} onRequireAuth={beginAuth} sharedText={sharedText} setSharedText={setSharedText} currentUser={{ ...currentUser, subscription: currentPlanKey }} isAuthenticated={isAuthenticated} /></main>
     </div>
