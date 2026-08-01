@@ -13,7 +13,7 @@ export class PlatformError extends Error {
 export class AuthenticationError extends PlatformError { constructor(message = 'Authentication required.') { super(message, 401, 'AUTHENTICATION_REQUIRED'); } }
 export class AuthorizationError extends PlatformError { constructor(message = 'You do not have permission for this action.') { super(message, 403, 'AUTHORIZATION_DENIED'); } }
 export class EntitlementError extends PlatformError { constructor(message = 'Your plan does not include this feature.') { super(message, 403, 'ENTITLEMENT_REQUIRED'); } }
-export class QuotaError extends PlatformError { constructor(message = 'Configured usage quota reached.') { super(message, 429, 'QUOTA_REACHED'); } }
+export class QuotaError extends PlatformError { constructor(message = 'You have reached the limit of your current plan.') { super(message, 429, 'PLAN_LIMIT_REACHED'); } }
 export class ConflictError extends PlatformError { constructor(message: string) { super(message, 409, 'CONFLICT'); } }
 
 export const nowIso = () => new Date().toISOString();
@@ -40,7 +40,7 @@ export function verifyPassword(password: string, stored: string) {
 
 const emptyStores: Record<string, any> = {
   workspaces: {}, organizations: {}, organizationMemberships: {}, teams: {}, teamMemberships: {}, invitations: {},
-  sessions: {}, subscriptions: {}, usageEvents: [], quotaReservations: {}, auditEvents: [], securityEvents: [],
+  sessions: {}, subscriptions: {}, usageEvents: [], quotaReservations: {}, auditEvents: [], securityEvents: [], passwordResetTokens: {}, emailVerificationTokens: {}, savedPrompts: {}, userWorkspaceStates: {},
   apiKeys: {}, webhookEndpoints: {}, webhookDeliveries: {}, automations: {}, automationExecutions: {},
   featureFlags: {}, dataExports: {}, deletionRequests: {}, idempotencyRecords: {}, providerHealth: {}, jobs: {}, deadLetterJobs: {},
   pendingPlanSelections: {}, pendingCheckouts: {}, processedPayments: {}, contactSalesLeads: {}, billingEvents: [], aiProviderRequests: [],
@@ -72,6 +72,9 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
     user.status ||= 'active';
     user.createdAt ||= nowIso();
     user.updatedAt ||= user.createdAt;
+    user.emailVerifiedAt ||= null;
+    user.profile ||= {};
+    user.preferences ||= { timezone: 'Asia/Kolkata', language: 'English' };
     const canonicalPlan = resolvePlanKey(user.subscription);
     if (canonicalPlan && user.subscription !== canonicalPlan) { user.subscription = canonicalPlan; changes.push(`canonical-user-plan:${user.id}`); }
   }
@@ -81,8 +84,8 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
   }
   for (const flag of DEFAULT_FEATURE_FLAGS) if (!db.featureFlags[flag.key]) db.featureFlags[flag.key] = { ...flag, target: 'global', createdAt: nowIso(), updatedAt: nowIso() };
   const previousVersion = Number(db.schemaVersion || 0);
-  if (previousVersion < 13) { db.schemaVersion = 13; changes.push(`schema:${previousVersion}->13`); }
-  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 13 };
+  if (previousVersion < 14) { db.schemaVersion = 14; changes.push(`schema:${previousVersion}->14`); }
+  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 14 };
 }
 
 export function createSession(db: any, userId: string, meta: { userAgent?: string; ipHash?: string } = {}) {
@@ -109,7 +112,7 @@ export function resolveSession(db: any, token: string) {
 }
 
 export function publicUser(user: any, token?: string) {
-  return { id: user.id, name: user.name, email: user.email, subscription: normalizePlanId(user.subscription), role: user.role || 'User', adminRole: user.adminRole || null, status: user.status || 'active', ...(token ? { sessionToken: token } : {}) };
+  return { id: user.id, name: user.name, email: user.email, avatar: user.profile?.avatar || null, phone: user.profile?.phone || '', company: user.profile?.company || '', timezone: user.preferences?.timezone || 'Asia/Kolkata', language: user.preferences?.language || 'English', emailVerified: Boolean(user.emailVerifiedAt), subscription: normalizePlanId(user.subscription), role: user.role || 'User', adminRole: user.adminRole || null, status: user.status || 'active', ...(token ? { sessionToken: token } : {}) };
 }
 
 export function rolePermissions(roleId: string): PlatformPermission[] {
@@ -161,7 +164,7 @@ export function resolveTenantContext(db: any, token: string): TenantContext {
   const planId = resolvedPlan(db, tenantType, tenantId, auth.user);
   const plan = PLAN_REGISTRY[planId];
   const featureFlags = resolvedFeatureFlags(db);
-  auth.session.lastActiveAt = nowIso();
+  if (Date.now() - Date.parse(auth.session.lastActiveAt || auth.session.createdAt || '0') > 15 * 60_000) auth.session.lastActiveAt = nowIso();
   return { user: auth.user, session: auth.session, workspace, tenantType, tenantId, organization: tenantType === 'organization' ? organization : null, membership: tenantType === 'organization' ? membership : null, role, permissions, planId, entitlements: entitlementsWithFlags(planId, featureFlags), limits: plan.limits, featureFlags };
 }
 

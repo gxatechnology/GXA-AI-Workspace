@@ -107,7 +107,7 @@ test('approved OpenRouter model fallback never invokes direct providers', async 
   const config = configuredEnvironment(); const calls: string[] = [];
   const openrouter: AIProviderAdapter = { id: 'openrouter', enabled: () => true, configured: () => true, generate: async request => { calls.push('openrouter'); return { text: 'ok', provider: 'openrouter', providerModelId: request.modelIds[1], usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, durationMs: 2, fallbackUsed: true }; }, async *stream() {} };
   const disabled = (id: 'openai' | 'gemini'): AIProviderAdapter => ({ id, enabled: () => false, configured: () => false, generate: async () => { calls.push(id); throw new Error('must not execute'); }, async *stream() {} });
-  const result = await new AIService(config, [openrouter, disabled('openai'), disabled('gemini')]).generate({ tool: 'summarizer', planId: 'free', requestId: 'request', prompt: 'text', systemInstruction: 'system' });
+  const result = await new AIService(config, [openrouter, disabled('openai'), disabled('gemini')]).generate({ tool: 'summarizer', planId: 'pro', requestId: 'request', prompt: 'text', systemInstruction: 'system' });
   assert.deepEqual(calls, ['openrouter']); assert.equal(result.fallbackUsed, true); assert.equal(result.modelKey, 'or-gpt-41-mini');
 });
 
@@ -142,7 +142,7 @@ test('AI quota reservations commit, roll back, and remain tenant-isolated', () =
   const db: any = { quotaReservations: {}, usageEvents: [] };
   const context = (tenantId: string) => ({ tenantId, user: { id: `user-${tenantId}` }, limits: { ai_requests_month: 1 } } as any);
   const first = reserveUsage(db, context('tenant-a'), 'ai_requests_month', 1, 'ai-a');
-  assert.throws(() => reserveUsage(db, context('tenant-a'), 'ai_requests_month', 1, 'ai-a-2'), /quota/i);
+  assert.throws(() => reserveUsage(db, context('tenant-a'), 'ai_requests_month', 1, 'ai-a-2'), (error: any) => error.code === 'PLAN_LIMIT_REACHED');
   const second = reserveUsage(db, context('tenant-b'), 'ai_requests_month', 1, 'ai-b');
   const event = commitUsage(db, first.id, 1, { provider: 'openrouter', tool: 'summarizer', status: 'completed' });
   releaseUsage(db, second.id);

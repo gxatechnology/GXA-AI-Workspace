@@ -26,14 +26,14 @@ const PLAN_RANK: Record<MediaPlan, number> = { free: 0, pro: 1, pro_plus: 2 };
 
 export function normalizeMediaPlan(value: unknown): MediaPlan {
   const plan = resolvePlanKey(value) || 'free';
-  if (['pro_plus', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
+  if (['pro_plus', 'business-pro', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }
 
 export function assertMediaEntitlement(tool: MediaToolDefinition, plan: MediaPlan) {
   if (PLAN_RANK[plan] < PLAN_RANK[tool.requiredPlan]) {
-    const label = tool.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro';
+    const label = tool.requiredPlan === 'pro_plus' ? 'Pro' : 'Starter';
     throw new MediaValidationError(`${tool.name} requires ${label}. Your image and prompt are preserved.`, 403, 'PREMIUM_MEDIA_TOOL');
   }
 }

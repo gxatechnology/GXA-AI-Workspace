@@ -7,7 +7,10 @@
       "email": "tauqeerashraf250@gmail.com",
       "password": "scrypt$94ff35456f4fea9b123002b99fa7fa34$9eac5517e3d7cd74b6b3e22a7f6682232ac5e8b14342494d2d8c5eef90623ad68a68b46ca0e38ef85746bfde555f858fcf45bf18bc9c1f464c736adf3ebd758b",
       "subscription": "free",
-      "role": "User"
+      "role": "User",
+      "status": "active",
+      "createdAt": "2026-07-29T01:10:44.862Z",
+      "updatedAt": "2026-07-29T01:10:44.862Z"
     },
     "gxatechnology@gmail.com": {
       "id": "gxatechnology@gmail.com",
@@ -16,7 +19,10 @@
       "email": "gxatechnology@gmail.com",
       "password": "scrypt$ed180ffc48f6b8ad015187c0f905e9fe$d053c0d318b6a24354a55977cb9d8dbc74d64407d690efb75d749f0e7a4dadf8450879a9e146d0b40c87ef78221f2546e4610b46a53ea5ed89b835baef699a88",
       "subscription": "free",
-      "role": "User"
+      "role": "User",
+      "status": "active",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
     }
   },
   "projects": {
@@ -71,20 +77,1275 @@
     "translation_daily_limit": 10,
     "translation_character_limit": 20000,
     "translation_languages": [
-      { "code": "en", "name": "English", "script": "Latin" }, { "code": "hi", "name": "Hindi", "script": "Devanagari" }, { "code": "hinglish", "name": "Hinglish", "script": "Latin" }, { "code": "ar", "name": "Arabic", "script": "Arabic" }, { "code": "fr", "name": "French", "script": "Latin" }, { "code": "de", "name": "German", "script": "Latin" }, { "code": "es", "name": "Spanish", "script": "Latin" }, { "code": "pt", "name": "Portuguese", "script": "Latin" }, { "code": "it", "name": "Italian", "script": "Latin" }, { "code": "nl", "name": "Dutch", "script": "Latin" }, { "code": "ru", "name": "Russian", "script": "Cyrillic" }, { "code": "ja", "name": "Japanese", "script": "Japanese" }, { "code": "ko", "name": "Korean", "script": "Hangul" }, { "code": "zh", "name": "Chinese", "script": "Han" }, { "code": "tr", "name": "Turkish", "script": "Latin" }, { "code": "id", "name": "Indonesian", "script": "Latin" }, { "code": "vi", "name": "Vietnamese", "script": "Latin" }, { "code": "bn", "name": "Bengali", "script": "Bengali" }, { "code": "mr", "name": "Marathi", "script": "Devanagari" }, { "code": "ta", "name": "Tamil", "script": "Tamil" }, { "code": "te", "name": "Telugu", "script": "Telugu" }, { "code": "gu", "name": "Gujarati", "script": "Gujarati" }, { "code": "pa", "name": "Punjabi", "script": "Gurmukhi" }
+      {
+        "code": "en",
+        "name": "English",
+        "script": "Latin"
+      },
+      {
+        "code": "hi",
+        "name": "Hindi",
+        "script": "Devanagari"
+      },
+      {
+        "code": "hinglish",
+        "name": "Hinglish",
+        "script": "Latin"
+      },
+      {
+        "code": "ar",
+        "name": "Arabic",
+        "script": "Arabic"
+      },
+      {
+        "code": "fr",
+        "name": "French",
+        "script": "Latin"
+      },
+      {
+        "code": "de",
+        "name": "German",
+        "script": "Latin"
+      },
+      {
+        "code": "es",
+        "name": "Spanish",
+        "script": "Latin"
+      },
+      {
+        "code": "pt",
+        "name": "Portuguese",
+        "script": "Latin"
+      },
+      {
+        "code": "it",
+        "name": "Italian",
+        "script": "Latin"
+      },
+      {
+        "code": "nl",
+        "name": "Dutch",
+        "script": "Latin"
+      },
+      {
+        "code": "ru",
+        "name": "Russian",
+        "script": "Cyrillic"
+      },
+      {
+        "code": "ja",
+        "name": "Japanese",
+        "script": "Japanese"
+      },
+      {
+        "code": "ko",
+        "name": "Korean",
+        "script": "Hangul"
+      },
+      {
+        "code": "zh",
+        "name": "Chinese",
+        "script": "Han"
+      },
+      {
+        "code": "tr",
+        "name": "Turkish",
+        "script": "Latin"
+      },
+      {
+        "code": "id",
+        "name": "Indonesian",
+        "script": "Latin"
+      },
+      {
+        "code": "vi",
+        "name": "Vietnamese",
+        "script": "Latin"
+      },
+      {
+        "code": "bn",
+        "name": "Bengali",
+        "script": "Bengali"
+      },
+      {
+        "code": "mr",
+        "name": "Marathi",
+        "script": "Devanagari"
+      },
+      {
+        "code": "ta",
+        "name": "Tamil",
+        "script": "Tamil"
+      },
+      {
+        "code": "te",
+        "name": "Telugu",
+        "script": "Telugu"
+      },
+      {
+        "code": "gu",
+        "name": "Gujarati",
+        "script": "Gujarati"
+      },
+      {
+        "code": "pa",
+        "name": "Punjabi",
+        "script": "Gurmukhi"
+      }
     ],
-    "translation_modes": ["Standard", "Natural", "Formal", "Informal", "Business", "Academic", "Marketing", "Technical", "Legal", "Medical", "Conversational"],
+    "translation_modes": [
+      "Standard",
+      "Natural",
+      "Formal",
+      "Informal",
+      "Business",
+      "Academic",
+      "Marketing",
+      "Technical",
+      "Legal",
+      "Medical",
+      "Conversational"
+    ],
     "career_daily_ai_limit": 5,
     "career_resume_limit": 3,
     "career_import_size_mb": 10,
     "career_templates": [
-      { "id": "gxa-ats", "name": "GXA ATS", "category": "ATS Friendly", "atsFriendly": true, "requiredPlan": "free", "description": "Single-column layout with conventional headings." },
-      { "id": "gxa-modern", "name": "GXA Modern", "category": "Professional", "atsFriendly": true, "requiredPlan": "free", "description": "Clean typography with a restrained accent." },
-      { "id": "gxa-academic", "name": "GXA Academic", "category": "Academic", "atsFriendly": false, "requiredPlan": "free", "description": "Detailed sections for research and publications." }
+      {
+        "id": "gxa-ats",
+        "name": "GXA ATS",
+        "category": "ATS Friendly",
+        "atsFriendly": true,
+        "requiredPlan": "free",
+        "description": "Single-column layout with conventional headings."
+      },
+      {
+        "id": "gxa-modern",
+        "name": "GXA Modern",
+        "category": "Professional",
+        "atsFriendly": true,
+        "requiredPlan": "free",
+        "description": "Clean typography with a restrained accent."
+      },
+      {
+        "id": "gxa-academic",
+        "name": "GXA Academic",
+        "category": "Academic",
+        "atsFriendly": false,
+        "requiredPlan": "free",
+        "description": "Detailed sections for research and publications."
+      }
     ],
     "business_daily_generation_limit": 10,
     "business_pro_daily_generation_limit": 100,
     "business_character_limit": 20000,
+    "business_tools": [
+      {
+        "id": "professional-email",
+        "name": "Professional Email",
+        "category": "Email",
+        "description": "Clear professional communication.",
+        "outputType": "email",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "cold-email",
+        "name": "Cold Outreach Email",
+        "category": "Email",
+        "description": "Responsible outreach grounded in a real offer.",
+        "outputType": "email",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "sales-email",
+        "name": "Sales Email",
+        "category": "Email",
+        "description": "Benefit-led sales communication from verified claims.",
+        "outputType": "email",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "follow-up-email",
+        "name": "Follow-up Email",
+        "category": "Email",
+        "description": "Respectful follow-up with a clear next step.",
+        "outputType": "email",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "hr-email",
+        "name": "HR Email",
+        "category": "Email",
+        "description": "Workplace communication using supplied policy facts.",
+        "outputType": "email",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "support-email",
+        "name": "Customer Support Email",
+        "category": "Email",
+        "description": "Empathetic case-specific responses.",
+        "outputType": "email",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "business-letter",
+        "name": "Business Letter",
+        "category": "Email",
+        "description": "Formal business correspondence.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "legal-letter",
+        "name": "Legal Letter Assistant",
+        "category": "Email",
+        "description": "Informational drafting for qualified review.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "informationalOnly": true
+      },
+      {
+        "id": "marketing-campaign",
+        "name": "Marketing Campaign",
+        "category": "Marketing",
+        "description": "Channel-aware campaign messaging and deliverables.",
+        "outputType": "campaign",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "google-search-ads",
+        "name": "Google Search Ads",
+        "category": "Marketing",
+        "description": "Search headlines and descriptions from verified claims.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Google Search",
+        "platformLimit": 90
+      },
+      {
+        "id": "performance-max",
+        "name": "Performance Max Copy",
+        "category": "Marketing",
+        "description": "Performance Max headline and description variants.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Google Performance Max",
+        "platformLimit": 90
+      },
+      {
+        "id": "meta-ads",
+        "name": "Meta Ads",
+        "category": "Marketing",
+        "description": "Facebook and Instagram ad-copy variants.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Meta Ads",
+        "platformLimit": 125
+      },
+      {
+        "id": "carousel-copy",
+        "name": "Carousel Copy",
+        "category": "Marketing",
+        "description": "Slide-by-slide carousel messaging.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Carousel",
+        "platformLimit": 2200
+      },
+      {
+        "id": "reel-hooks",
+        "name": "Reel Hooks",
+        "category": "Marketing",
+        "description": "Short-form video hooks without invented outcomes.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Reels",
+        "platformLimit": 150
+      },
+      {
+        "id": "youtube-descriptions",
+        "name": "YouTube Descriptions",
+        "category": "Marketing",
+        "description": "Search-aware descriptions from supplied facts.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "YouTube",
+        "platformLimit": 5000
+      },
+      {
+        "id": "youtube-titles",
+        "name": "YouTube Titles",
+        "category": "Marketing",
+        "description": "Concise video-title variants.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "YouTube",
+        "platformLimit": 100
+      },
+      {
+        "id": "seo-titles",
+        "name": "SEO Titles",
+        "category": "Marketing",
+        "description": "Search-title variants from supplied keywords.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Search",
+        "platformLimit": 60
+      },
+      {
+        "id": "meta-descriptions",
+        "name": "Meta Descriptions",
+        "category": "Marketing",
+        "description": "Accurate search descriptions.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Search",
+        "platformLimit": 160
+      },
+      {
+        "id": "product-ads",
+        "name": "Product Ads",
+        "category": "Marketing",
+        "description": "Product advertising copy using verified features.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "display-ads",
+        "name": "Display Ads",
+        "category": "Marketing",
+        "description": "Compact display-ad variants.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Display",
+        "platformLimit": 90
+      },
+      {
+        "id": "blog-marketing",
+        "name": "Blog Marketing Copy",
+        "category": "Marketing",
+        "description": "Promotion copy for a real article.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "landing-page",
+        "name": "Landing Page Copy",
+        "category": "Marketing",
+        "description": "Structured page copy from verified benefits.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "press-release",
+        "name": "Press Release",
+        "category": "Marketing",
+        "description": "Factual announcement copy.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "sales-funnel",
+        "name": "Sales Funnel Copy",
+        "category": "Marketing",
+        "description": "Stage-aware funnel messaging.",
+        "outputType": "campaign",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "webinar",
+        "name": "Webinar Copy",
+        "category": "Marketing",
+        "description": "Registration, reminder and follow-up copy.",
+        "outputType": "campaign",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "linkedin",
+        "name": "LinkedIn Post",
+        "category": "Social",
+        "description": "Professional platform-aware post.",
+        "outputType": "social",
+        "requiredPlan": "free",
+        "guestAccess": true,
+        "platform": "LinkedIn",
+        "platformLimit": 3000
+      },
+      {
+        "id": "instagram",
+        "name": "Instagram Caption",
+        "category": "Social",
+        "description": "Caption with optional hashtags and emoji.",
+        "outputType": "social",
+        "requiredPlan": "free",
+        "guestAccess": true,
+        "platform": "Instagram",
+        "platformLimit": 2200
+      },
+      {
+        "id": "facebook",
+        "name": "Facebook Post",
+        "category": "Social",
+        "description": "Audience-aware Facebook copy.",
+        "outputType": "social",
+        "requiredPlan": "free",
+        "guestAccess": true,
+        "platform": "Facebook",
+        "platformLimit": 63206
+      },
+      {
+        "id": "x-post",
+        "name": "X Post",
+        "category": "Social",
+        "description": "Concise post within the configured platform limit.",
+        "outputType": "social",
+        "requiredPlan": "free",
+        "guestAccess": true,
+        "platform": "X",
+        "platformLimit": 280
+      },
+      {
+        "id": "threads",
+        "name": "Threads Post",
+        "category": "Social",
+        "description": "Conversational Threads copy.",
+        "outputType": "social",
+        "requiredPlan": "free",
+        "guestAccess": true,
+        "platform": "Threads",
+        "platformLimit": 500
+      },
+      {
+        "id": "pinterest",
+        "name": "Pinterest Copy",
+        "category": "Social",
+        "description": "Pin title and description grounded in supplied details.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Pinterest",
+        "platformLimit": 500
+      },
+      {
+        "id": "youtube-community",
+        "name": "YouTube Community Post",
+        "category": "Social",
+        "description": "Community post for a real channel update.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "YouTube Community",
+        "platformLimit": 1500
+      },
+      {
+        "id": "google-business-profile",
+        "name": "Google Business Profile Post",
+        "category": "Social",
+        "description": "Accurate local-business update.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Google Business Profile",
+        "platformLimit": 1500
+      },
+      {
+        "id": "whatsapp",
+        "name": "WhatsApp Campaign",
+        "category": "Social",
+        "description": "Consent-aware message copy.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "WhatsApp",
+        "platformLimit": 1000
+      },
+      {
+        "id": "sms",
+        "name": "SMS Campaign",
+        "category": "Social",
+        "description": "Compact opt-out-aware campaign text.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "SMS",
+        "platformLimit": 160
+      },
+      {
+        "id": "push-notification",
+        "name": "Push Notification",
+        "category": "Social",
+        "description": "Compact title and message.",
+        "outputType": "social",
+        "requiredPlan": "pro",
+        "guestAccess": false,
+        "platform": "Push notification",
+        "platformLimit": 178
+      },
+      {
+        "id": "product-description",
+        "name": "Product Description",
+        "category": "Commerce",
+        "description": "Product copy from verified specifications.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "amazon-listing",
+        "name": "Amazon Listing",
+        "category": "Commerce",
+        "description": "Listing title, bullets and description from facts.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "flipkart-listing",
+        "name": "Flipkart Listing",
+        "category": "Commerce",
+        "description": "Marketplace listing from real product details.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "shopify-product",
+        "name": "Shopify Product Copy",
+        "category": "Commerce",
+        "description": "Store-ready product copy from verified details.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "faq",
+        "name": "FAQ Generator",
+        "category": "Commerce",
+        "description": "Questions and answers supported by the supplied brief.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "testimonial-request",
+        "name": "Testimonial Request",
+        "category": "Commerce",
+        "description": "Request a genuine customer testimonial without fabricating one.",
+        "outputType": "email",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "proposal",
+        "name": "Client Proposal",
+        "category": "Proposals",
+        "description": "Service proposal with supplied scope and pricing.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "software-proposal",
+        "name": "Software Proposal",
+        "category": "Proposals",
+        "description": "Software scope, implementation and assumptions.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "agency-proposal",
+        "name": "Agency Proposal",
+        "category": "Proposals",
+        "description": "Agency deliverables, timeline and exclusions.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "quotation",
+        "name": "Quotation Text",
+        "category": "Proposals",
+        "description": "Quotation language using only supplied pricing.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "implementation-plan",
+        "name": "Implementation Plan",
+        "category": "Proposals",
+        "description": "Phased plan grounded in supplied scope.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "invoice-text",
+        "name": "Invoice Text",
+        "category": "Proposals",
+        "description": "Invoice notes and payment wording from supplied terms.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "executive-summary",
+        "name": "Executive Summary",
+        "category": "Reports",
+        "description": "Decision-ready summary from source facts.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "weekly-report",
+        "name": "Weekly Report",
+        "category": "Reports",
+        "description": "Weekly progress report without invented metrics.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "monthly-report",
+        "name": "Monthly Report",
+        "category": "Reports",
+        "description": "Monthly progress report without invented metrics.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "quarterly-report",
+        "name": "Quarterly Report",
+        "category": "Reports",
+        "description": "Quarterly report using supplied evidence.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "annual-report",
+        "name": "Annual Report",
+        "category": "Reports",
+        "description": "Annual narrative using supplied evidence.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "case-study",
+        "name": "Case Study",
+        "category": "Reports",
+        "description": "Evidence-based case study with no invented results.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "business-profile",
+        "name": "Business Profile",
+        "category": "Operations",
+        "description": "Reusable company profile from verified details.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "company-introduction",
+        "name": "Company Introduction",
+        "category": "Operations",
+        "description": "Concise company introduction from verified facts.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "meeting-agenda",
+        "name": "Meeting Agenda",
+        "category": "Operations",
+        "description": "Structured agenda with purpose and owners.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "meeting-minutes",
+        "name": "Meeting Minutes",
+        "category": "Operations",
+        "description": "Minutes from supplied notes only.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "sop",
+        "name": "SOP Generator",
+        "category": "Operations",
+        "description": "Workflow, responsibilities, approvals and review schedule.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "policy",
+        "name": "Policy Generator",
+        "category": "Operations",
+        "description": "Informational internal-policy draft for review.",
+        "outputType": "document",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "internal-memo",
+        "name": "Internal Memo",
+        "category": "Operations",
+        "description": "Concise internal communication.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "presentation-outline",
+        "name": "Presentation Outline",
+        "category": "Operations",
+        "description": "Slide-by-slide outline from supplied facts.",
+        "outputType": "document",
+        "requiredPlan": "free",
+        "guestAccess": true
+      },
+      {
+        "id": "campaign-planner",
+        "name": "Campaign Planner",
+        "category": "Planning",
+        "description": "Goal, audience, budget, channels, timeline and KPIs.",
+        "outputType": "campaign",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      },
+      {
+        "id": "content-calendar",
+        "name": "Content Calendar",
+        "category": "Planning",
+        "description": "Daily, weekly or monthly content schedule.",
+        "outputType": "calendar",
+        "requiredPlan": "pro",
+        "guestAccess": false
+      }
+    ],
+    "business_languages": [
+      "English",
+      "Hindi",
+      "Hinglish",
+      "Spanish",
+      "French",
+      "German",
+      "Portuguese"
+    ],
+    "media_free_generation_limit": 3,
+    "media_pro_generation_limit": 25,
+    "media_pro_plus_generation_limit": 100,
+    "media_free_vision_limit": 5,
+    "media_pro_vision_limit": 50,
+    "media_pro_plus_vision_limit": 200,
+    "media_character_limit": 4000,
+    "media_upload_size_mb": 10,
+    "media_batch_limit": 4,
+    "media_asset_limit": 100,
+    "media_image_model": "gemini-3.1-flash-image",
+    "media_vision_model": "gemini-3.1-flash-lite",
+    "media_tools": [
+      {
+        "id": "image-generator",
+        "name": "AI Image Generator",
+        "section": "Create",
+        "description": "Create an original visual from a written brief.",
+        "operation": "generate",
+        "requiredPlan": "free",
+        "requiresImage": false,
+        "supportsBatch": true
+      },
+      {
+        "id": "image-variations",
+        "name": "Image Variations",
+        "section": "Create",
+        "description": "Create original alternatives from an uploaded image.",
+        "operation": "edit",
+        "requiredPlan": "pro",
+        "requiresImage": true,
+        "supportsBatch": true
+      },
+      {
+        "id": "illustration",
+        "name": "Illustration Creator",
+        "section": "Create",
+        "description": "Create editorial or explanatory illustrations.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "icon-set",
+        "name": "Icon Set Creator",
+        "section": "Create",
+        "description": "Create a consistent original icon family.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "product-visual",
+        "name": "Product Visual",
+        "section": "Create",
+        "description": "Create a product visual from supplied product facts.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "background-remove",
+        "name": "Background Removal",
+        "section": "Edit",
+        "description": "Remove the background where the provider can preserve transparency.",
+        "operation": "edit",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "background-replace",
+        "name": "Background Replacement",
+        "section": "Edit",
+        "description": "Replace a background using a written scene description.",
+        "operation": "edit",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "upscale",
+        "name": "Upscale and Enhance",
+        "section": "Edit",
+        "description": "Improve perceived detail while preserving the supplied subject.",
+        "operation": "edit",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "restore",
+        "name": "Photo Restoration",
+        "section": "Edit",
+        "description": "Repair age-related damage without changing known identity or facts.",
+        "operation": "edit",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true
+      },
+      {
+        "id": "object-remove",
+        "name": "Object Removal",
+        "section": "Edit",
+        "description": "Remove a described object and reconstruct the surrounding area.",
+        "operation": "edit",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true
+      },
+      {
+        "id": "lighting",
+        "name": "Lighting and Color",
+        "section": "Edit",
+        "description": "Adjust lighting, contrast and color balance.",
+        "operation": "edit",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "crop-resize",
+        "name": "Crop and Resize",
+        "section": "Edit",
+        "description": "Crop, rotate and resize locally in your browser.",
+        "operation": "local",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "watermark-add",
+        "name": "Add Watermark",
+        "section": "Edit",
+        "description": "Add your own text watermark locally.",
+        "operation": "local",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "watermark-owned-remove",
+        "name": "Remove Your Watermark",
+        "section": "Edit",
+        "description": "Remove only a watermark you own or are authorized to edit.",
+        "operation": "edit",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true,
+        "sensitive": true
+      },
+      {
+        "id": "ocr-printed",
+        "name": "Printed Text OCR",
+        "section": "OCR",
+        "description": "Extract printed text from a real image.",
+        "operation": "vision",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-handwriting",
+        "name": "Handwriting OCR",
+        "section": "OCR",
+        "description": "Extract handwriting with uncertainty clearly identified.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-table",
+        "name": "Table OCR",
+        "section": "OCR",
+        "description": "Extract visible tables into structured Markdown.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-receipt",
+        "name": "Receipt Reader",
+        "section": "OCR",
+        "description": "Extract visible receipt fields without inventing values.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-invoice",
+        "name": "Invoice Reader",
+        "section": "OCR",
+        "description": "Extract visible invoice fields without inventing values.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-business-card",
+        "name": "Business Card Reader",
+        "section": "OCR",
+        "description": "Extract visible contact fields.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-id",
+        "name": "ID Document Reader",
+        "section": "OCR",
+        "description": "Extract visible fields; this does not verify identity or authenticity.",
+        "operation": "vision",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true,
+        "sensitive": true
+      },
+      {
+        "id": "ocr-whiteboard",
+        "name": "Whiteboard Reader",
+        "section": "OCR",
+        "description": "Extract visible notes and spatial groups.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "ocr-math",
+        "name": "Math and Formula OCR",
+        "section": "OCR",
+        "description": "Transcribe visible equations and flag ambiguous symbols.",
+        "operation": "vision",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true
+      },
+      {
+        "id": "image-translate",
+        "name": "Image Translation",
+        "section": "OCR",
+        "description": "Extract visible text and translate it into the selected language.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "caption",
+        "name": "Image Caption",
+        "section": "Document Vision",
+        "description": "Produce a concise factual caption.",
+        "operation": "vision",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "description",
+        "name": "Detailed Description",
+        "section": "Document Vision",
+        "description": "Describe visible content and uncertainty.",
+        "operation": "vision",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "visual-question",
+        "name": "Ask About an Image",
+        "section": "Document Vision",
+        "description": "Answer a question using visible evidence only.",
+        "operation": "vision",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "chart-analysis",
+        "name": "Chart Analysis",
+        "section": "Document Vision",
+        "description": "Explain visible labels, trends and limitations without inventing data.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "diagram-analysis",
+        "name": "Diagram Analysis",
+        "section": "Document Vision",
+        "description": "Explain visible nodes, connections and labels.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "screenshot-analysis",
+        "name": "Screenshot Analysis",
+        "section": "Document Vision",
+        "description": "Review a real product or application screenshot.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "website-analysis",
+        "name": "Website Screenshot Review",
+        "section": "Document Vision",
+        "description": "Review the uploaded website screenshot for usability and content.",
+        "operation": "vision",
+        "requiredPlan": "pro",
+        "requiresImage": true
+      },
+      {
+        "id": "accessibility",
+        "name": "Accessibility Description",
+        "section": "Document Vision",
+        "description": "Create useful alt text and flag visually evident concerns.",
+        "operation": "vision",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "barcode",
+        "name": "Barcode and QR Reader",
+        "section": "Document Vision",
+        "description": "Read supported codes locally when the browser provides BarcodeDetector.",
+        "operation": "barcode",
+        "requiredPlan": "free",
+        "requiresImage": true
+      },
+      {
+        "id": "instagram-creative",
+        "name": "Instagram Creative",
+        "section": "Marketing",
+        "description": "Create an original Instagram-ready visual.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "facebook-creative",
+        "name": "Facebook Creative",
+        "section": "Marketing",
+        "description": "Create an original Facebook-ready visual.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "linkedin-creative",
+        "name": "LinkedIn Creative",
+        "section": "Marketing",
+        "description": "Create an original professional social visual.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "display-ad",
+        "name": "Google Display Ad",
+        "section": "Marketing",
+        "description": "Create an original display-ad concept from verified claims.",
+        "operation": "generate",
+        "requiredPlan": "pro_plus",
+        "requiresImage": false
+      },
+      {
+        "id": "youtube-thumbnail",
+        "name": "YouTube Thumbnail",
+        "section": "Marketing",
+        "description": "Create an original thumbnail without misleading claims.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "blog-image",
+        "name": "Blog Feature Image",
+        "section": "Marketing",
+        "description": "Create a feature image from an article brief.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "hero-banner",
+        "name": "Website Hero Banner",
+        "section": "Marketing",
+        "description": "Create an original website hero visual.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "poster",
+        "name": "Poster Creator",
+        "section": "Marketing",
+        "description": "Create an original poster from supplied event or offer details.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "flyer",
+        "name": "Flyer Creator",
+        "section": "Marketing",
+        "description": "Create an original flyer from supplied details.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "business-card",
+        "name": "Business Card Concept",
+        "section": "Marketing",
+        "description": "Create a business-card visual from supplied contact details.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "certificate",
+        "name": "Certificate Concept",
+        "section": "Marketing",
+        "description": "Create a certificate layout without inventing recipient data.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "brochure",
+        "name": "Brochure Cover",
+        "section": "Marketing",
+        "description": "Create an original brochure-cover concept.",
+        "operation": "generate",
+        "requiredPlan": "pro_plus",
+        "requiresImage": false
+      },
+      {
+        "id": "rollup-banner",
+        "name": "Roll-up Banner",
+        "section": "Marketing",
+        "description": "Create an original exhibition banner concept.",
+        "operation": "generate",
+        "requiredPlan": "pro_plus",
+        "requiresImage": false
+      },
+      {
+        "id": "infographic",
+        "name": "Infographic",
+        "section": "Marketing",
+        "description": "Visualize only facts and figures supplied in the brief.",
+        "operation": "generate",
+        "requiredPlan": "pro_plus",
+        "requiresImage": false
+      },
+      {
+        "id": "logo-concept",
+        "name": "Logo Concept",
+        "section": "Brand",
+        "description": "Create an original logo concept without imitating another brand.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "vector-mark",
+        "name": "Vector Brand Mark",
+        "section": "Brand",
+        "description": "Build a simple editable SVG mark from your name and initials.",
+        "operation": "vector",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "favicon",
+        "name": "Favicon",
+        "section": "Brand",
+        "description": "Create a compact original favicon concept.",
+        "operation": "generate",
+        "requiredPlan": "pro",
+        "requiresImage": false
+      },
+      {
+        "id": "brand-variants",
+        "name": "Brand Variants",
+        "section": "Brand",
+        "description": "Create monochrome, light and dark variants from an owned asset.",
+        "operation": "edit",
+        "requiredPlan": "pro_plus",
+        "requiresImage": true
+      }
+    ],
+    "ai_tool_model_overrides": {},
     "writer_generations_limit": 5,
     "writer_input_word_limit": 1500,
     "writer_output_word_limit": 1200,
@@ -133,7 +1394,154 @@
         "grammar_corrections": 0,
         "writer_generations": 0,
         "originality_analyses": 3
+      },
+      "2026-07-29": {
+        "paraphrases": 0,
+        "chats": 0,
+        "pdf_uploads": 0,
+        "ocr_pages": 0,
+        "grammar_corrections": 0,
+        "writer_generations": 0
       }
     }
-  }
+  },
+  "mediaAssets": {},
+  "aiProviderRequests": [
+    {
+      "id": "ai_6aff724e-ddc5-48dc-94ed-25b0b84be96d",
+      "requestId": "382ce19e-20f5-4771-bb0e-933fb738e241",
+      "tenantId": "guest_b66fe5138ae9cc66e13a84d9",
+      "userId": "guest_b66fe5138ae9cc66e13a84d9",
+      "tool": "grammar_checker",
+      "provider": "openrouter",
+      "modelKey": null,
+      "status": "failed",
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "durationMs": 1,
+      "fallbackUsed": false,
+      "createdAt": "2026-07-29T01:18:30.439Z",
+      "errorCode": "PROVIDER_NOT_CONFIGURED",
+      "completedAt": "2026-07-29T01:18:30.440Z"
+    }
+  ],
+  "workspaces": {
+    "personal_f587773f76f5c480c4c1": {
+      "id": "personal_f587773f76f5c480c4c1",
+      "tenantType": "personal",
+      "tenantId": "tauqeerashraf250@gmail.com",
+      "ownerId": "tauqeerashraf250@gmail.com",
+      "name": "Personal Workspace",
+      "status": "active",
+      "createdAt": "2026-07-29T01:10:44.861Z",
+      "updatedAt": "2026-07-29T01:10:44.862Z"
+    },
+    "personal_d6d2040e4e46694f93fc": {
+      "id": "personal_d6d2040e4e46694f93fc",
+      "tenantType": "personal",
+      "tenantId": "gxatechnology@gmail.com",
+      "ownerId": "gxatechnology@gmail.com",
+      "name": "Personal Workspace",
+      "status": "active",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    }
+  },
+  "organizations": {},
+  "organizationMemberships": {},
+  "teams": {},
+  "teamMemberships": {},
+  "invitations": {},
+  "sessions": {},
+  "subscriptions": {},
+  "usageEvents": [],
+  "quotaReservations": {
+    "quota_1d204b77-1be9-4841-90b4-dadec678e4bb": {
+      "id": "quota_1d204b77-1be9-4841-90b4-dadec678e4bb",
+      "tenantId": "guest_b66fe5138ae9cc66e13a84d9",
+      "userId": "guest_b66fe5138ae9cc66e13a84d9",
+      "dimension": "ai_requests_month",
+      "quantity": 1,
+      "period": "2026-07",
+      "idempotencyKey": "ai_6aff724e-ddc5-48dc-94ed-25b0b84be96d",
+      "status": "released",
+      "createdAt": "2026-07-29T01:18:30.439Z",
+      "updatedAt": "2026-07-29T01:18:30.440Z"
+    }
+  },
+  "auditEvents": [],
+  "securityEvents": [],
+  "apiKeys": {},
+  "webhookEndpoints": {},
+  "webhookDeliveries": {},
+  "automations": {},
+  "automationExecutions": {},
+  "featureFlags": {
+    "platform.organizations": {
+      "key": "platform.organizations",
+      "description": "Organization and workspace management",
+      "enabled": true,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    },
+    "platform.developer_api": {
+      "key": "platform.developer_api",
+      "description": "Scoped developer API",
+      "enabled": true,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    },
+    "platform.automations": {
+      "key": "platform.automations",
+      "description": "Structured automation workflows",
+      "enabled": true,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    },
+    "platform.service_accounts": {
+      "key": "platform.service_accounts",
+      "description": "Enterprise service accounts",
+      "enabled": false,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    },
+    "platform.sso": {
+      "key": "platform.sso",
+      "description": "Enterprise SSO enforcement",
+      "enabled": false,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    },
+    "platform.mfa": {
+      "key": "platform.mfa",
+      "description": "Multi-factor authentication",
+      "enabled": false,
+      "securityRelevant": true,
+      "target": "global",
+      "createdAt": "2026-07-29T01:10:44.863Z",
+      "updatedAt": "2026-07-29T01:10:44.863Z"
+    }
+  },
+  "dataExports": {},
+  "deletionRequests": {},
+  "idempotencyRecords": {},
+  "providerHealth": {},
+  "jobs": {},
+  "deadLetterJobs": {},
+  "pendingPlanSelections": {},
+  "pendingCheckouts": {},
+  "processedPayments": {},
+  "contactSalesLeads": {},
+  "billingEvents": [],
+  "schemaVersion": 13
 }

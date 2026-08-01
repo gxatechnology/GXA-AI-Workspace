@@ -1,3 +1,1 @@
-import React from 'react';
-import EmptyWorkspaceState from './EmptyWorkspaceState';
-export default function Trash() { return <EmptyWorkspaceState title="Trash is empty" description="Deleted resources will appear here only when durable recovery is supported. This screen does not claim that content is retained or deleted without a backend record." />; }
+import React from 'react'; import ResourceView from './ResourceView'; export default function Trash({ currentUser }: { currentUser?: any }) { return <ResourceView currentUser={currentUser} title="Trash" description="Restore deleted projects and documents or remove them permanently." endpoint="/api/trash" trash />; }

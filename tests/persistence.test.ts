@@ -13,7 +13,7 @@ import { ApplicationPersistence } from '../server/persistence/index.js';
 import { JsonDatabaseAdapter } from '../server/persistence/json.js';
 import { mergeLegacyData } from '../server/persistence/merge.js';
 import { migrationStatus, runSchemaMigrations } from '../server/persistence/migrations.js';
-import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError, previewLegacyJsonImport } from '../server/persistence/postgres.js';
+import { commitPostgresSnapshot, importLegacyJson, loadPostgresSnapshot, PersistenceConflictError, PersistenceUnavailableError, previewLegacyJsonImport, verifyPostgresRuntime } from '../server/persistence/postgres.js';
 import { hashPassword } from '../server/platform.js';
 
 function memoryPool() {
@@ -30,6 +30,23 @@ test('production persistence requires PostgreSQL and never falls back to JSON', 
   const config = resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres', DATABASE_URL: 'server-only-placeholder', DATABASE_SSL: 'verify-full' }, 'db.json');
   assert.equal(config.provider, 'postgres');
   assert.deepEqual(config.ssl, { rejectUnauthorized: true });
+});
+
+test('PostgreSQL persistence never creates or writes the JSON fallback file', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'gxa-postgres-selection-'));
+  const jsonFile = path.join(directory, 'db.json');
+  const persistence = new ApplicationPersistence({
+    NODE_ENV: 'test',
+    PERSISTENCE_PROVIDER: 'postgres',
+    DATABASE_URL: 'postgresql://postgres:placeholder@127.0.0.1:1/gxa',
+  }, jsonFile);
+  try {
+    assert.equal(persistence.provider, 'postgres');
+    await assert.rejects(fs.access(jsonFile), (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+  } finally {
+    await persistence.close();
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('normalization preserves password hashes, saved documents, and settings', () => {
@@ -132,10 +149,10 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
   try {
     const initialStatus = await migrationStatus(pool);
     assert.deepEqual(initialStatus.applied, []);
-    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation']);
+    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
     const firstMigration = await runSchemaMigrations(pool);
     const secondMigration = await runSchemaMigrations(pool);
-    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation']);
+    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation']);
     assert.deepEqual(secondMigration.applied, []);
 
     const password = hashPassword('migration-password', 'abcdefabcdefabcdefabcdefabcdefab');
@@ -154,6 +171,17 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
     assert.equal(snapshot.data.users.user.password, password);
     assert.equal(snapshot.data.documents.user[0].content, 'saved');
     assert.equal(snapshot.data.config.paraphrase_word_limit, 321);
+  } finally { await pool.end(); }
+});
+
+test('PostgreSQL runtime readiness uses the pooled connection and requires the migrated import receipt', async () => {
+  const pool = memoryPool();
+  try {
+    await assert.rejects(verifyPostgresRuntime(pool), PersistenceUnavailableError);
+    await runSchemaMigrations(pool);
+    await assert.rejects(verifyPostgresRuntime(pool), PersistenceUnavailableError);
+    await importLegacyJson(pool, { users: {}, documents: {}, config: {}, usage: {} }, 'runtime-seed-hash', 'test');
+    await verifyPostgresRuntime(pool);
   } finally { await pool.end(); }
 });
 

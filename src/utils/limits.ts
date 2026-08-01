@@ -14,6 +14,7 @@ export interface SystemConfig {
   document_file_count_limit: number;
   document_supported_types: string[];
   grammar_corrections_limit: number;
+  grammar_admin_config?: any;
   originality_daily_limit: number;
   originality_character_limit: number;
   translation_daily_limit: number;
@@ -64,6 +65,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     document_file_count_limit: 5,
     document_supported_types: ['application/pdf', 'text/plain', 'text/markdown'],
     grammar_corrections_limit: 5,
+    grammar_admin_config: undefined,
     originality_daily_limit: 5,
     originality_character_limit: 30000,
     translation_daily_limit: 10,

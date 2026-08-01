@@ -2,9 +2,11 @@ import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import {
-  FEATURE_PLAN_REQUIREMENTS, PLAN_FEATURE_LABELS, PLAN_REGISTRY, FeatureKey, PlanDefinition, PlanId,
-  minimumPlanForFeature, planIncludesFeature, resolvePlanKey,
+  BUSINESS_PRO_PLAN_HIGHLIGHTS, FEATURE_PLAN_REQUIREMENTS, PLAN_FEATURE_LABELS, PLAN_REGISTRY, FeatureKey, PlanDefinition, PlanId,
+  minimumPlanForFeature, planIncludesFeature, resolvePlanKey, upgradePresentationForFeature,
 } from '../shared/platformRegistry.js';
+import { BUSINESS_TOOLS } from '../shared/businessRegistry.js';
+import { CAREER_TOOLS } from '../shared/careerRegistry.js';
 import { audit, AuthorizationError, PlatformError, TenantContext, nowIso, resolvePlanState } from './platform.js';
 
 export class BillingError extends PlatformError {
@@ -27,12 +29,20 @@ export function strictPlanKey(value: unknown): PlanId {
 
 export function publicPlan(plan: PlanDefinition) {
   const monthlyPrice = plan.monthlyPriceMinor === null ? null : plan.monthlyPriceMinor / 100;
+  const contextualHighlights = plan.key === 'business-pro' ? BUSINESS_PRO_PLAN_HIGHLIGHTS : [];
+  const limitFeatures = [
+    `${Number(plan.limits.ai_requests_month || 0).toLocaleString('en-IN')} AI requests per month`,
+    `${Number(plan.limits.project_limit || 0).toLocaleString('en-IN')} projects`,
+    `${Number(plan.limits.saved_document_limit || 0).toLocaleString('en-IN')} saved documents`,
+    `${Number(plan.limits.available_ai_models || 0)} AI ${Number(plan.limits.available_ai_models || 0) === 1 ? 'model' : 'models'}`,
+  ];
   return {
     id: plan.key, key: plan.key, name: plan.name, displayName: plan.displayName, description: plan.description,
     currency: plan.currency, monthlyPrice, displayPrice: plan.key === 'team' ? 'Contact Sales' : plan.key === 'enterprise' ? 'Custom Pricing' : `₹${monthlyPrice}`,
     billingLabel: plan.billingType === 'fixed' ? '/month' : plan.billingType === 'free' ? 'Free' : '',
     billingType: plan.billingType, billingIntervals: [...plan.billingIntervals], contactSales: plan.contactSales,
-    recommended: plan.recommended, rank: plan.rank, features: plan.entitlements.map(key => PLAN_FEATURE_LABELS[key]),
+    active: plan.active, public: plan.public, upgradeable: plan.upgradeable,
+    recommended: plan.recommended, rank: plan.rank, features: [...new Set([...contextualHighlights, ...limitFeatures, ...plan.entitlements.map(key => PLAN_FEATURE_LABELS[key])])],
     entitlements: [...plan.entitlements], limits: { ...plan.limits },
   };
 }
@@ -41,6 +51,106 @@ export const publicPlans = () => Object.values(PLAN_REGISTRY)
   .filter(plan => plan.active && plan.public)
   .sort((a, b) => a.rank - b.rank)
   .map(publicPlan);
+
+type ComparisonValue = { kind: 'included' | 'excluded' | 'limit' | 'text' | 'planned'; label: string };
+type ComparisonRow = { id: string; label: string; description?: string; values: Partial<Record<PlanId, ComparisonValue>> };
+
+const comparisonPlans = () => Object.values(PLAN_REGISTRY).filter(plan => plan.active && plan.public).sort((a, b) => a.rank - b.rank);
+const comparisonValues = (value: (plan: PlanDefinition) => ComparisonValue) => Object.fromEntries(comparisonPlans().map(plan => [plan.key, value(plan)]));
+const included = (value: boolean): ComparisonValue => value ? { kind: 'included', label: 'Included' } : { kind: 'excluded', label: 'Not included' };
+const featureRow = (id: string, label: string, featureKey: string, description?: string): ComparisonRow => ({ id, label, description, values: comparisonValues(plan => included(planIncludesFeature(plan.key, featureKey))) });
+const limitRow = (id: string, label: string, limitKey: string, suffix = ''): ComparisonRow => ({
+  id, label,
+  values: comparisonValues(plan => {
+    const value = Number(plan.limits[limitKey] || 0);
+    return { kind: 'limit', label: `${value.toLocaleString('en-IN')}${suffix}` };
+  }),
+});
+
+export function pricingComparison() {
+  const studioAccess = (plan: PlanDefinition, featureKey: string) => included(planIncludesFeature(plan.key, featureKey));
+  const businessSections = Array.from(new Set(BUSINESS_TOOLS.map(tool => tool.category))).map(category => ({
+    id: `business-${category.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    label: `Business Studio · ${category}`,
+    rows: BUSINESS_TOOLS.filter(tool => tool.category === category).map(tool => ({
+      id: `business-tool-${tool.id}`,
+      label: tool.name,
+      description: tool.description,
+      values: comparisonValues(plan => studioAccess(plan, 'business.basic')),
+    })),
+  }));
+  const careerRows = CAREER_TOOLS.filter(tool => tool.status === 'available').map(tool => ({
+    id: `career-tool-${tool.id}`,
+    label: tool.name,
+    description: tool.description,
+    values: comparisonValues(plan => studioAccess(plan, 'career.basic')),
+  }));
+  const storageValues = comparisonValues(plan => {
+    const megabytes = Number(plan.limits.storage_mb || 0);
+    return { kind: 'limit', label: megabytes >= 1024 ? `${Number((megabytes / 1024).toFixed(megabytes % 1024 ? 1 : 0))} GB` : `${megabytes} MB` };
+  });
+  const priceValues = comparisonValues(plan => ({ kind: 'text', label: plan.monthlyPriceMinor === 0 ? '₹0' : `₹${Number(plan.monthlyPriceMinor || 0) / 100}/month` }));
+  const futureValues = comparisonValues(() => ({ kind: 'planned', label: 'Future ready' }));
+
+  return {
+    generatedFrom: ['plan_registry', 'business_tool_registry', 'career_tool_registry'],
+    sections: [
+      { id: 'general', label: 'General', rows: [
+        { id: 'monthly-price', label: 'Monthly price', values: priceValues },
+        { id: 'monthly-billing', label: 'Monthly billing', values: comparisonValues(() => ({ kind: 'included', label: 'Included' })) },
+      ] },
+      { id: 'ai-limits', label: 'AI Limits', rows: [
+        limitRow('ai-requests', 'AI requests', 'ai_requests_month', ' / month'),
+        limitRow('ai-models', 'Available AI models', 'available_ai_models'),
+        limitRow('input-size', 'Maximum input size', 'max_input_characters', ' characters'),
+        limitRow('output-size', 'Maximum output size', 'max_output_tokens', ' tokens'),
+      ] },
+      { id: 'projects-documents', label: 'Projects and Documents', rows: [
+        limitRow('project-limit', 'Projects', 'project_limit'),
+        limitRow('document-limit', 'Saved documents', 'saved_document_limit'),
+        featureRow('document-intelligence', 'Document intelligence', 'documents.intelligence'),
+        featureRow('document-batch', 'Batch document processing', 'documents.batch'),
+      ] },
+      { id: 'history-storage', label: 'History and Storage', rows: [
+        limitRow('history-days', 'History retention', 'history_days', ' days'),
+        { id: 'storage-limit', label: 'Workspace storage', values: storageValues },
+      ] },
+      { id: 'writing-tools', label: 'Writing Tools', rows: [
+        featureRow('ai-chat', 'AI Chat', 'chat.basic'),
+        featureRow('paraphraser', 'Paraphraser', 'paraphraser.standard'),
+        featureRow('grammar', 'Grammar Checker', 'grammar.basic'),
+        featureRow('writer', 'AI Writer', 'writer.basic'),
+        featureRow('translator', 'Translator', 'translation.basic'),
+        featureRow('detector', 'AI Detector', 'originality.detector'),
+      ] },
+      { id: 'premium-ai-features', label: 'Premium AI Features', rows: [
+        featureRow('premium-models', 'Premium AI models', 'chat.premium_models'),
+        featureRow('premium-paraphraser', 'Premium paraphrasing modes', 'paraphraser.premium_modes'),
+        featureRow('advanced-grammar', 'Advanced grammar suggestions', 'grammar.advanced'),
+        featureRow('humanizer', 'AI Humanizer', 'humanizer.standard'),
+        featureRow('advanced-originality', 'Advanced originality analysis', 'originality.advanced'),
+        featureRow('advanced-exports', 'Advanced exports', 'exports.advanced'),
+      ] },
+      { id: 'templates', label: 'Templates', rows: [featureRow('premium-templates', 'All premium templates', 'writer.premium_templates')] },
+      { id: 'business-studio', label: 'Business Studio', rows: [featureRow('business-access', 'Complete Business Studio', 'business.basic', `${BUSINESS_TOOLS.length} registered tools across ${new Set(BUSINESS_TOOLS.map(tool => tool.category)).size} categories`)] },
+      ...businessSections,
+      { id: 'career-studio', label: 'Career Studio', rows: [featureRow('career-access', 'Complete Career Studio', 'career.basic'), ...careerRows] },
+      { id: 'support', label: 'Support', rows: [
+        { id: 'account-plan-management', label: 'Account plan management', values: comparisonValues(() => ({ kind: 'included', label: 'Included' })) },
+        { id: 'priority-processing', label: 'Priority processing', description: 'Architecture prepared; activation will be configured separately.', values: comparisonValues(plan => plan.key === 'business-pro' ? { kind: 'planned', label: 'Future ready' } : { kind: 'excluded', label: 'Not included' }) },
+      ] },
+      { id: 'security', label: 'Security', rows: [
+        { id: 'server-entitlements', label: 'Server-side access enforcement', values: comparisonValues(() => ({ kind: 'included', label: 'Included' })) },
+        { id: 'verified-activation', label: 'Backend-verified subscription activation', values: comparisonValues(plan => plan.billingType === 'free' ? { kind: 'text', label: 'Not required' } : { kind: 'included', label: 'Included' }) },
+      ] },
+      { id: 'future-integrations', label: 'Future Integrations', rows: [
+        { id: 'yearly-billing', label: 'Yearly billing', values: futureValues },
+        { id: 'coupons-gst', label: 'Coupons and GST invoices', values: futureValues },
+        { id: 'teams-seats', label: 'Teams and seats', values: futureValues },
+      ] },
+    ],
+  };
+}
 
 export function canManageBilling(context: TenantContext) {
   return context.tenantType === 'personal' || context.permissions.includes('billing.manage');
@@ -107,6 +217,7 @@ export function currentPlanSummary(context: TenantContext, db?: any) {
   const subscription = state.subscription;
   return {
     plan: publicPlan(plan), currentPlanKey: plan.key, subscriptionStatus: state.status,
+    activationDate: subscription?.activatedAt || subscription?.currentPeriodStart || context.user.createdAt || null,
     currentPeriodStart: subscription?.currentPeriodStart || null, currentPeriodEnd: subscription?.currentPeriodEnd || null,
     cancelAtPeriodEnd: Boolean(subscription?.cancelAtPeriodEnd),
     entitlements: Object.fromEntries(Object.keys(FEATURE_PLAN_REQUIREMENTS).map(featureKey => [featureKey, planIncludesFeature(plan.key, featureKey)])),
@@ -120,8 +231,17 @@ export function resolveFeatureGate(featureKey: string, currentPlanKey: PlanId) {
   const allowed = planIncludesFeature(currentPlanKey, featureKey);
   const currentRank = PLAN_REGISTRY[currentPlanKey].rank;
   const minimumRank = PLAN_REGISTRY[minimumRequiredPlanKey].rank;
-  const eligibleUpgradePlans = Object.values(PLAN_REGISTRY).filter(plan => plan.active && plan.public && plan.rank >= minimumRank && plan.rank > currentRank).sort((a, b) => a.rank - b.rank).map(publicPlan);
-  return { featureKey: featureKey as FeatureKey, allowed, currentPlanKey, minimumRequiredPlanKey, eligibleUpgradePlans, reason: allowed ? 'included' : 'plan_upgrade_required' };
+  const eligibleUpgradePlans = Object.values(PLAN_REGISTRY).filter(plan => plan.active && plan.public && plan.upgradeable && plan.rank >= minimumRank && plan.rank > currentRank).sort((a, b) => a.rank - b.rank).map(publicPlan);
+  return {
+    featureKey: featureKey as FeatureKey,
+    allowed,
+    currentPlanKey,
+    currentPlan: publicPlan(PLAN_REGISTRY[currentPlanKey]),
+    minimumRequiredPlanKey,
+    eligibleUpgradePlans,
+    presentation: upgradePresentationForFeature(featureKey),
+    reason: allowed ? 'included' : 'plan_upgrade_required',
+  };
 }
 
 export function validateCoupon(config: any, code: unknown, planId: PlanId) {

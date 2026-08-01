@@ -1,4 +1,1 @@
-import React from 'react';
-import EnterprisePlatform from './EnterprisePlatform';
-import { storedUser } from '../../utils/auth';
-export default function Storage({ currentUser = storedUser() }: { currentUser?: any }) { return <EnterprisePlatform currentUser={currentUser} initialSection="billing" />; }
+import React from 'react'; import ResourceView from './ResourceView'; export default function Storage({ currentUser }: { currentUser?: any }) { return <ResourceView currentUser={currentUser} title="Storage" description="Documents and projects saved in your current workspace." endpoint="/api/library?view=all" />; }

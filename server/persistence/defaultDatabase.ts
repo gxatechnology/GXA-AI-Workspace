@@ -22,6 +22,7 @@ export function defaultApplicationConfig() {
     document_file_count_limit: 5,
     document_supported_types: ['application/pdf', 'text/plain', 'text/markdown'],
     grammar_corrections_limit: 5,
+    grammar_admin_config: { grammarRulesEnabled: true, premiumRulesEnabled: true, suggestionLimit: 15, dailyLimit: 10, supportedLanguages: ['English', 'Spanish', 'French', 'German', 'Italian', 'Hindi'], featureFlags: { realTimeChecking: true, toneAnalysis: true, readabilityScore: true, compareMode: true } },
     originality_daily_limit: 5,
     originality_character_limit: 30000,
     translation_daily_limit: 10,
@@ -65,6 +66,7 @@ export function emptyApplicationDatabase() {
     users: {}, projects: {}, documents: {}, chats: {}, analyses: {}, translations: {},
     glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {},
     resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {},
+    passwordResetTokens: {}, emailVerificationTokens: {}, savedPrompts: {}, userWorkspaceStates: {},
     aiProviderRequests: [], config: defaultApplicationConfig(), usage: {},
   };
 }
@@ -78,7 +80,7 @@ export function normalizeApplicationDatabase(input: unknown) {
     feature_locks: { ...defaults.feature_locks, ...(source.config?.feature_locks || {}) },
   };
   source.usage ||= {};
-  for (const store of ['users', 'projects', 'documents', 'chats', 'analyses', 'translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets']) source[store] ||= {};
+  for (const store of ['users', 'projects', 'documents', 'chats', 'analyses', 'translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets', 'passwordResetTokens', 'emailVerificationTokens', 'savedPrompts', 'userWorkspaceStates']) source[store] ||= {};
   if (!Array.isArray(source.aiProviderRequests)) source.aiProviderRequests = [];
   return applyPlatformMigration(source).db;
 }

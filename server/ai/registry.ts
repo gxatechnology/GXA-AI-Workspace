@@ -5,21 +5,21 @@ import type { AIToolKey } from './types.js';
 export const AI_MODEL_REGISTRY: Readonly<Record<string, AIModelDefinition>> = Object.freeze({
   'or-gemini-25-flash-lite': {
     key: 'or-gemini-25-flash-lite', provider: 'openrouter', providerModelId: 'google/gemini-2.5-flash-lite', displayName: 'GXA Fast',
-    supportedTools: ['ai_chat', 'ai_writer', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'],
+    supportedTools: ['ai_chat', 'ai_writer', 'grammar_checker', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'],
     supportedModalities: ['text', 'image'], supportedParameters: ['temperature', 'max_tokens', 'response_format'], contextLimit: 1_048_576, outputLimit: 65_536,
-    requiredPlan: 'free', active: true, defaultForTools: ['ai_chat', 'ai_writer', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'], fallbackModels: ['or-gpt-41-mini'], costCategory: 'economy',
+    requiredPlan: 'free', active: true, defaultForTools: ['ai_chat', 'ai_writer', 'grammar_checker', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'], fallbackModels: ['or-gpt-41-mini'], costCategory: 'economy',
   },
   'or-gpt-41-mini': {
     key: 'or-gpt-41-mini', provider: 'openrouter', providerModelId: 'openai/gpt-4.1-mini', displayName: 'GXA Precise',
     supportedTools: ['ai_chat', 'ai_writer', 'grammar_checker', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'],
     supportedModalities: ['text', 'image'], supportedParameters: ['temperature', 'max_tokens', 'response_format'], contextLimit: 1_048_576, outputLimit: 32_768,
-    requiredPlan: 'free', active: true, defaultForTools: ['grammar_checker'], fallbackModels: ['or-gemini-25-flash'], costCategory: 'standard',
+    requiredPlan: 'pro', active: true, defaultForTools: [], fallbackModels: ['or-gemini-25-flash'], costCategory: 'standard',
   },
   'or-gemini-25-flash': {
     key: 'or-gemini-25-flash', provider: 'openrouter', providerModelId: 'google/gemini-2.5-flash', displayName: 'GXA Balanced',
     supportedTools: ['ai_chat', 'ai_writer', 'grammar_checker', 'paraphraser', 'summarizer', 'translator', 'resume_builder', 'cover_letter', 'business_writer', 'marketing_writer', 'marketing_analysis', 'document_summary', 'document_chat', 'ai_humanizer', 'growth_analysis', 'technology_writer', 'media_vision'],
     supportedModalities: ['text', 'image'], supportedParameters: ['temperature', 'max_tokens', 'response_format'], contextLimit: 1_048_576, outputLimit: 65_536,
-    requiredPlan: 'free', active: true, defaultForTools: [], fallbackModels: [], costCategory: 'standard',
+    requiredPlan: 'pro_plus', active: true, defaultForTools: [], fallbackModels: [], costCategory: 'standard',
   },
   'openai-gpt-41-mini-direct': {
     key: 'openai-gpt-41-mini-direct', provider: 'openai', providerModelId: 'gpt-4.1-mini', displayName: 'GXA Precise (Direct OpenAI)',
@@ -51,7 +51,7 @@ const route = (primaryModel: string, overrides: Partial<AIToolRoute>): AIToolRou
 export const AI_TOOL_ROUTING: Readonly<Record<AIToolKey, AIToolRoute>> = Object.freeze({
   ai_chat: route('or-gemini-25-flash-lite', { inputLimit: 80_000, outputLimit: 4_096, temperature: 0.55, timeoutMs: 55_000 }),
   ai_writer: route('or-gemini-25-flash-lite', { inputLimit: 40_000, outputLimit: 4_096, temperature: 0.65 }),
-  grammar_checker: route('or-gpt-41-mini', { inputLimit: 100_000, outputLimit: 6_144, temperature: 0.05, structuredOutput: true }),
+  grammar_checker: route('or-gemini-25-flash-lite', { inputLimit: 100_000, outputLimit: 6_144, temperature: 0.05, structuredOutput: true }),
   paraphraser: route('or-gemini-25-flash-lite', { inputLimit: 60_000, outputLimit: 4_096, temperature: 0.35 }),
   summarizer: route('or-gemini-25-flash-lite', { inputLimit: 100_000, outputLimit: 4_096, temperature: 0.15 }),
   translator: route('or-gemini-25-flash-lite', { inputLimit: 100_000, outputLimit: 6_144, temperature: 0.05 }),

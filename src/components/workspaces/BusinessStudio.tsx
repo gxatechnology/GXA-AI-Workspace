@@ -64,7 +64,7 @@ export default function BusinessStudio({
   const auth = useMemo(() => authHeaders(currentUser), [currentUser]);
   const [config, setConfig] = useState<StudioConfig>(() => ({
     ...fallbackConfig,
-    currentPlan: canonicalPlanKey(currentUser?.subscription) === 'free' || !canonicalPlanKey(currentUser?.subscription) ? 'free' : 'pro',
+    currentPlan: ['business-pro', 'team', 'enterprise'].includes(canonicalPlanKey(currentUser?.subscription) || '') ? 'pro' : 'free',
   }));
   const [tab, setTab] = useState<StudioTab>('home');
   const [toolId, setToolId] = useState('professional-email');
@@ -173,7 +173,7 @@ export default function BusinessStudio({
       }
       setOutput(body.result.text);
       setWarnings(body.result.warnings || []);
-      setStatus(`Generated successfully · ${body.usage.used} of ${body.usage.limit || 'unlimited'} daily requests used.`);
+      setStatus('Generated successfully.');
     } catch {
       setError('The service could not be reached. Your brief is preserved.');
     } finally {

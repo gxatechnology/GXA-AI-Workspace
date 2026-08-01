@@ -43,6 +43,9 @@ import {
   type UsageStats,
 } from "../../utils/limits";
 import { generateWriterContent, WriterApiError } from "../../utils/writer";
+import { authenticatedFetch } from "../../utils/auth";
+import { canonicalPlanKey } from "../../utils/pricing";
+import { loadWorkspaceState, saveWorkspaceState } from "../../utils/workspaceState";
 
 interface AIWritingProps {
   currentUser?: any;
@@ -67,6 +70,13 @@ interface DocumentVersion {
   content: string;
   timestamp: number;
 }
+interface AIWriterState {
+  favorites?: string[];
+  recent?: string[];
+  versions?: DocumentVersion[];
+  result?: string;
+  title?: string;
+}
 type MobilePane = "templates" | "editor" | "preview";
 type TemplateView =
   | "recommended"
@@ -81,8 +91,12 @@ const countWords = (value: string) =>
   value.trim() ? value.trim().split(/\s+/).length : 0;
 const readingTime = (value: string) =>
   value.trim() ? Math.max(1, Math.ceil(countWords(value) / 225)) : 0;
-const planLabel = (plan: string) =>
-  plan === "pro_plus" ? "Pro Plus" : plan === "pro" ? "Pro" : "Free";
+const planLabel = (plan: string) => {
+  const canonicalPlan = canonicalPlanKey(plan);
+  return canonicalPlan === "business-pro" ? "Business Pro" : canonicalPlan === "pro_plus" ? "Pro" : canonicalPlan === "pro" ? "Starter" : "Free";
+};
+const templatePlanLabel = (plan: string) =>
+  plan === "free" ? "Free" : "Business Pro";
 const authUserFromStorage = () => {
   try {
     const stored = JSON.parse(localStorage.getItem("gxa_user") || "null");
@@ -206,6 +220,9 @@ export default function AIWriting({
     [currentUser],
   );
   const authenticated = Boolean(authenticatedUser?.sessionToken);
+  const canUsePremiumTemplates = ["business-pro", "team", "enterprise"].includes(
+    canonicalPlanKey(currentUser?.subscription || authenticatedUser?.subscription) || "free",
+  );
   const [activeTemplateId, setActiveTemplateId] = useState("ai-writer");
   const activeTemplate = useMemo(
     () =>
@@ -280,6 +297,7 @@ export default function AIWriting({
   const [promptTitle, setPromptTitle] = useState("");
   const [promptText, setPromptText] = useState("");
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [workspaceStateReady, setWorkspaceStateReady] = useState(false);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -342,39 +360,25 @@ export default function AIWriting({
     if (!authenticated) {
       setPromptStatus("guest");
       setPromptLibrary([]);
+      setWorkspaceStateReady(false);
       return;
     }
-    try {
-      const storedPrompts = JSON.parse(
-        localStorage.getItem("gxa_writer_saved_prompts") || "[]",
-      );
-      const storedFavorites = JSON.parse(
-        localStorage.getItem("gxa_writer_favorites") || "[]",
-      );
-      const storedRecent = JSON.parse(
-        localStorage.getItem("gxa_writer_recent") || "[]",
-      );
-      const storedVersions = JSON.parse(
-        localStorage.getItem("gxa_writer_versions") || "[]",
-      );
-      const storedResult =
-        localStorage.getItem("gxa_writer_active_content") || "";
-      const storedTitle = localStorage.getItem("gxa_writer_active_title") || "";
-      setPromptLibrary(Array.isArray(storedPrompts) ? storedPrompts : []);
-      setPromptStatus(
-        Array.isArray(storedPrompts) && storedPrompts.length
-          ? "ready"
-          : "empty",
-      );
-      setFavorites(Array.isArray(storedFavorites) ? storedFavorites : []);
-      setRecent(Array.isArray(storedRecent) ? storedRecent : []);
-      setVersions(Array.isArray(storedVersions) ? storedVersions : []);
-      if (storedResult) setResult(storedResult);
-      if (storedTitle) setTitle(storedTitle);
-    } catch {
-      setPromptStatus("error");
-    }
-  }, [authenticated]);
+    let active = true;
+    setWorkspaceStateReady(false);
+    Promise.all([
+      loadWorkspaceState<AIWriterState>(authenticatedUser, 'ai_writer'),
+      authenticatedFetch(authenticatedUser, '/api/prompts').then(async response => { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error); return Array.isArray(body.prompts) ? body.prompts : []; }),
+    ]).then(([saved, prompts]) => {
+      if (!active) return;
+      setFavorites(Array.isArray(saved?.favorites) ? saved.favorites : []);
+      setRecent(Array.isArray(saved?.recent) ? saved.recent : []);
+      setVersions(Array.isArray(saved?.versions) ? saved.versions : []);
+      setResult(saved?.result || ''); setTitle(saved?.title || '');
+      const normalized = prompts.map((item: any) => ({ id: item.id, title: item.title, prompt: item.content || item.prompt || '' }));
+      setPromptLibrary(normalized); setPromptStatus(normalized.length ? 'ready' : 'empty'); setWorkspaceStateReady(true);
+    }).catch(() => { if (active) { setPromptStatus('error'); setSaveStatus('error'); } });
+    return () => { active = false; };
+  }, [authenticated, authenticatedUser]);
 
   const values =
     templateValues[activeTemplateId] || defaultsFor(activeTemplate);
@@ -425,19 +429,13 @@ export default function AIWriting({
   const quotaExhausted = remainingGenerations === 0;
 
   useEffect(() => {
-    if (!authenticated || !result) return;
+    if (!authenticated || !workspaceStateReady) return;
     setSaveStatus("saving");
     const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem("gxa_writer_active_content", result);
-        localStorage.setItem("gxa_writer_active_title", title);
-        setSaveStatus("saved");
-      } catch {
-        setSaveStatus("error");
-      }
+      void saveWorkspaceState(authenticatedUser, 'ai_writer', { favorites, recent, versions, result, title }).then(() => setSaveStatus('saved')).catch(() => setSaveStatus('error'));
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [authenticated, result, title]);
+  }, [authenticated, authenticatedUser, workspaceStateReady, favorites, recent, versions, result, title]);
 
   const filteredTemplates = useMemo(() => {
     const query = templateQuery.trim().toLowerCase();
@@ -473,18 +471,14 @@ export default function AIWriting({
     );
   }, [templateQuery, templateCategory, templateView, favorites, recent]);
 
-  const persistList = (key: string, next: string[]) => {
-    if (authenticated) localStorage.setItem(key, JSON.stringify(next));
-  };
   const toggleFavorite = (templateId: string) => {
     const next = favorites.includes(templateId)
       ? favorites.filter((id) => id !== templateId)
       : [...favorites, templateId];
     setFavorites(next);
-    persistList("gxa_writer_favorites", next);
   };
   const isLocked = (template: WriterTemplateDefinition) =>
-    !premium && template.requiredPlan !== "free";
+    !canUsePremiumTemplates && template.requiredPlan !== "free";
   const chooseTemplate = (template: WriterTemplateDefinition) => {
     if (isLocked(template)) {
       onOpenUpgradeModal?.();
@@ -504,7 +498,6 @@ export default function AIWriting({
       ...recent.filter((id) => id !== template.id),
     ].slice(0, 8);
     setRecent(nextRecent);
-    persistList("gxa_writer_recent", nextRecent);
     setTemplatePreview(null);
     setMobilePane("editor");
     setLaptopPane("editor");
@@ -702,10 +695,6 @@ export default function AIWriting({
         };
         const nextVersions = [version, ...versions].slice(0, 30);
         setVersions(nextVersions);
-        localStorage.setItem(
-          "gxa_writer_versions",
-          JSON.stringify(nextVersions),
-        );
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -889,7 +878,7 @@ export default function AIWriting({
     }
   };
 
-  const savePrompt = () => {
+  const savePrompt = async () => {
     if (!authenticated) {
       setPromptDialogOpen(false);
       setGenerationError(
@@ -898,17 +887,10 @@ export default function AIWriting({
       return;
     }
     if (!promptTitle.trim() || !promptText.trim()) return;
-    const next = [
-      {
-        id: crypto.randomUUID(),
-        title: promptTitle.trim(),
-        prompt: promptText.trim(),
-      },
-      ...promptLibrary,
-    ];
     try {
-      localStorage.setItem("gxa_writer_saved_prompts", JSON.stringify(next));
-      setPromptLibrary(next);
+      const response = await authenticatedFetch(authenticatedUser, '/api/prompts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: promptTitle.trim(), content: promptText.trim() }) });
+      const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || 'Prompt could not be saved.');
+      setPromptLibrary([{ id: body.prompt.id, title: body.prompt.title, prompt: body.prompt.content }, ...promptLibrary]);
       setPromptStatus("ready");
       setPromptTitle("");
       setPromptText("");
@@ -917,12 +899,10 @@ export default function AIWriting({
       setPromptStatus("error");
     }
   };
-  const removePrompt = (id: string) => {
-    const next = promptLibrary.filter((prompt) => prompt.id !== id);
-    setPromptLibrary(next);
-    setPromptStatus(next.length ? "ready" : "empty");
-    if (authenticated)
-      localStorage.setItem("gxa_writer_saved_prompts", JSON.stringify(next));
+  const removePrompt = async (id: string) => {
+    const response = await authenticatedFetch(authenticatedUser, `/api/prompts/${id}`, { method: 'DELETE' });
+    if (!response.ok) { setPromptStatus('error'); return; }
+    const next = promptLibrary.filter((prompt) => prompt.id !== id); setPromptLibrary(next); setPromptStatus(next.length ? 'ready' : 'empty');
   };
 
   const requiredFields = activeTemplate.inputFields.filter(
@@ -966,13 +946,7 @@ export default function AIWriting({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden text-right text-[10px] text-slate-500 sm:block">
-            {limitsLoading
-              ? "Loading usage…"
-              : premium
-                ? `${planLabel(currentUser?.subscription || currentUser?.plan || "pro")} plan`
-                : `${remainingGenerations} generations left`}
-          </span>
+          <span className="hidden text-right text-[10px] text-slate-500 sm:block">{limitsLoading ? "Loading plan…" : `${planLabel(currentUser?.subscription || currentUser?.plan || "free")} plan`}</span>
           {!premium && (
             <button
               onClick={onOpenUpgradeModal}
@@ -1149,7 +1123,7 @@ export default function AIWriting({
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <div className="flex gap-1">
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
-                        {planLabel(template.requiredPlan)}
+                        {templatePlanLabel(template.requiredPlan)}
                       </span>
                       {template.isNew && (
                         <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black text-violet-700 dark:bg-violet-950 dark:text-violet-300">
@@ -1926,7 +1900,7 @@ export default function AIWriting({
                   Plan
                 </span>
                 <p className="mt-1 text-sm font-black">
-                  {planLabel(templatePreview.requiredPlan)}
+                  {templatePlanLabel(templatePreview.requiredPlan)}
                 </p>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-950">
@@ -2001,7 +1975,7 @@ export default function AIWriting({
                   }}
                   className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white dark:bg-white dark:text-slate-950"
                 >
-                  Compare plans for {planLabel(templatePreview.requiredPlan)}
+                  Compare plans for {templatePlanLabel(templatePreview.requiredPlan)}
                 </button>
               ) : (
                 <button

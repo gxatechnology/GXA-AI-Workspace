@@ -20,14 +20,15 @@ test('media registry has unique IDs and covers every requested studio section', 
 
 test('plan normalization and entitlements are backend-controlled', () => {
   assert.equal(normalizeMediaPlan('Enterprise'), 'pro_plus');
+  assert.equal(normalizeMediaPlan('Business Pro'), 'pro_plus');
   assert.equal(normalizeMediaPlan('Pro'), 'pro');
   assert.equal(normalizeMediaPlan(undefined), 'free');
   const free = MEDIA_TOOLS.find((tool) => tool.id === 'image-generator')!;
   const pro = MEDIA_TOOLS.find((tool) => tool.id === 'background-remove')!;
   const plus = MEDIA_TOOLS.find((tool) => tool.id === 'ocr-id')!;
   assert.doesNotThrow(() => assertMediaEntitlement(free, 'free'));
-  assert.throws(() => assertMediaEntitlement(pro, 'free'), /requires Pro/);
-  assert.throws(() => assertMediaEntitlement(plus, 'pro'), /requires Pro Plus/);
+  assert.throws(() => assertMediaEntitlement(pro, 'free'), /requires Starter/);
+  assert.throws(() => assertMediaEntitlement(plus, 'pro'), /requires Pro/);
   assert.doesNotThrow(() => assertMediaEntitlement(plus, 'pro_plus'));
 });
 

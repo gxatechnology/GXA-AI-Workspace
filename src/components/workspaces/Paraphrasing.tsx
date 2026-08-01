@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { fetchSystemConfig, fetchUsage, isUserPremium, SystemConfig, UsageStats } from '../../utils/limits';
 import { paraphraseContent } from '../../utils/paraphrase';
+import { loadWorkspaceState, saveWorkspaceState } from '../../utils/workspaceState';
 
 // Existing modes plus the Phase 2 Humanize mode
 interface ParaphraseMode {
@@ -73,7 +74,7 @@ interface ParaphrasingProps {
   onOpenUpgradeModal?: () => void;
 }
 
-// Interfaces for history & analytics
+// Persisted user history
 interface HistoryItem {
   id: string;
   timestamp: string;
@@ -82,14 +83,6 @@ interface HistoryItem {
   mode: string;
   lang: string;
   isFavorite: boolean;
-}
-
-interface ParaphraserAnalytics {
-  wordsRewritten: number;
-  favoriteModes: Record<string, number>;
-  historyUsageCount: number;
-  exportUsageCount: number;
-  copyUsageCount: number;
 }
 
 export default function Paraphrasing({ 
@@ -168,31 +161,14 @@ export default function Paraphrasing({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 2. LIFECYCLE & STORAGE METRICS
+  // 2. LIFECYCLE & PERSISTED WORKSPACE STATE
   useEffect(() => {
-    // Load local storage history, stats and admin configurations
-    try {
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      const savedHistory = localStorage.getItem('gxa_paraphrase_history');
-      if (savedHistory && user && !user.guest && user.role !== 'Guest') {
-        setHistoryList(JSON.parse(savedHistory));
-      }
-
-      // Sync background analytics schema
-      const savedAnalytics = localStorage.getItem('gxa_paraphraser_analytics');
-      if (!savedAnalytics) {
-        const initialAnalytics: ParaphraserAnalytics = {
-          wordsRewritten: 0,
-          favoriteModes: {},
-          historyUsageCount: 0,
-          exportUsageCount: 0,
-          copyUsageCount: 0
-        };
-        localStorage.setItem('gxa_paraphraser_analytics', JSON.stringify(initialAnalytics));
-      }
-    } catch (e) {
-      console.error('Error reading local metrics:', e);
-    }
+    const user = currentUser && !currentUser.guest ? currentUser : null;
+    if (!user) return;
+    void loadWorkspaceState<{ draft?: string; history?: HistoryItem[] }>(user, 'paraphraser').then(saved => {
+      if (Array.isArray(saved?.history)) setHistoryList(saved.history);
+      if (!sharedText && saved?.draft) setLocalInputText(saved.draft);
+    }).catch(() => setErrorState({ type: 'save', msg: 'Saved paraphraser work could not be loaded. New text remains available in this editor.' }));
   }, [currentUser]);
 
   // Fetch standard limits and configurations from system core databases
@@ -228,23 +204,12 @@ export default function Paraphrasing({
 
   // Autosave input draft to preserve states
   useEffect(() => {
-    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-    if (user && !user.guest && user.role !== 'Guest' && localInputText.trim() !== '') {
-      localStorage.setItem('gxa_paraphrase_draft', localInputText);
-    }
     if (localInputText.trim() !== '') detectLanguageHeuristic(localInputText);
+    const user = currentUser && !currentUser.guest ? currentUser : null;
+    if (!user) return;
+    const timer = window.setTimeout(() => { void saveWorkspaceState(user, 'paraphraser', { draft: localInputText, history: historyList }).catch(() => setErrorState({ type: 'save', msg: 'This draft could not be saved. Your text remains available in the editor.' })); }, 700);
+    return () => window.clearTimeout(timer);
   }, [localInputText, currentUser]);
-
-  // Read draft on mount if empty
-  useEffect(() => {
-    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-    if (!localInputText && user && !user.guest && user.role !== 'Guest') {
-      const savedDraft = localStorage.getItem('gxa_paraphrase_draft');
-      if (savedDraft) {
-        setLocalInputText(savedDraft);
-      }
-    }
-  }, [currentUser]);
 
   // Keyboard shortcut listeners (Undo: Ctrl+Z, Redo: Ctrl+Y, Gen: Ctrl+Enter)
   useEffect(() => {
@@ -407,8 +372,9 @@ export default function Paraphrasing({
     if (isDailyExceeded) {
       setErrorState({
         type: 'quota',
-        msg: `Daily rephrasing quota of ${dailyLimit} reached. Choose an eligible plan to review configured limits.`
+        msg: 'You have reached the limit of your current plan. Your text is preserved.'
       });
+      window.dispatchEvent(new CustomEvent('gxa:plan-limit'));
       return;
     }
 
@@ -452,9 +418,6 @@ export default function Paraphrasing({
       const nextVersions = [...versions, response];
       setVersions(nextVersions);
       setCurrentVersionIndex(nextVersions.length - 1);
-
-      // Track inside quiet local storage analytics
-      trackAnalytics(wordsCount, activeModeId);
 
       setUsage(previous => ({ ...(previous || { paraphrases: 0, chats: 0, pdf_uploads: 0, ocr_pages: 0, grammar_corrections: 0 }), paraphrases: result.usage.paraphrases }));
 
@@ -502,23 +465,8 @@ export default function Paraphrasing({
       };
       const updated = [newItem, ...historyList].slice(0, 50); // Keep top 50 items
       setHistoryList(updated);
-      const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-      if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const trackAnalytics = (wordCount: number, modeId: string) => {
-    try {
-      const analyticsData = localStorage.getItem('gxa_paraphraser_analytics');
-      if (analyticsData) {
-        const parsed: ParaphraserAnalytics = JSON.parse(analyticsData);
-        parsed.wordsRewritten += wordCount;
-        parsed.favoriteModes[modeId] = (parsed.favoriteModes[modeId] || 0) + 1;
-        parsed.historyUsageCount += 1;
-        localStorage.setItem('gxa_paraphraser_analytics', JSON.stringify(parsed));
-      }
+      const user = currentUser && !currentUser.guest ? currentUser : null;
+      if (user) void saveWorkspaceState(user, 'paraphraser', { draft: orig, history: updated });
     } catch (e) {
       console.error(e);
     }
@@ -633,16 +581,6 @@ export default function Paraphrasing({
   };
 
   const handleExportAction = (format: string) => {
-    // Record analytics counts
-    try {
-      const analyticsData = localStorage.getItem('gxa_paraphraser_analytics');
-      if (analyticsData) {
-        const parsed = JSON.parse(analyticsData);
-        parsed.exportUsageCount += 1;
-        localStorage.setItem('gxa_paraphraser_analytics', JSON.stringify(parsed));
-      }
-    } catch (e) {}
-
     const text = paraphrasedText;
     if (!text) return;
 
@@ -678,15 +616,6 @@ export default function Paraphrasing({
   };
 
   const handleCopyClipboard = () => {
-    try {
-      const analyticsData = localStorage.getItem('gxa_paraphraser_analytics');
-      if (analyticsData) {
-        const parsed = JSON.parse(analyticsData);
-        parsed.copyUsageCount += 1;
-        localStorage.setItem('gxa_paraphraser_analytics', JSON.stringify(parsed));
-      }
-    } catch (e) {}
-
     navigator.clipboard.writeText(paraphrasedText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -732,16 +661,16 @@ export default function Paraphrasing({
       return item;
     });
     setHistoryList(updated);
-    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-    if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
+    const user = currentUser && !currentUser.guest ? currentUser : null;
+    if (user) void saveWorkspaceState(user, 'paraphraser', { draft: localInputText, history: updated });
   };
 
   const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const updated = historyList.filter(item => item.id !== id);
     setHistoryList(updated);
-    const user = currentUser || JSON.parse(localStorage.getItem('gxa_user') || 'null');
-    if (user && !user.guest && user.role !== 'Guest') localStorage.setItem('gxa_paraphrase_history', JSON.stringify(updated));
+    const user = currentUser && !currentUser.guest ? currentUser : null;
+    if (user) void saveWorkspaceState(user, 'paraphraser', { draft: localInputText, history: updated });
   };
 
   const restoreHistoryText = (item: HistoryItem) => {

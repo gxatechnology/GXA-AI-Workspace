@@ -33,7 +33,7 @@ export const countWriterWords = (value: string) => value.trim() ? value.trim().s
 
 export function normalizeWriterPlan(value: unknown): WriterPlan {
   const plan = resolvePlanKey(value) || 'free';
-  if (plan === 'pro_plus' || plan === 'team' || plan === 'enterprise') return 'pro_plus';
+  if (plan === 'pro_plus' || plan === 'business-pro' || plan === 'team' || plan === 'enterprise') return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }
@@ -48,7 +48,7 @@ export function validateWriterRequest(body: unknown, userPlan: WriterPlan): Writ
   const templateId = clean(raw.templateId, 100);
   const template = findWriterTemplate(templateId);
   if (!template) throw new WriterValidationError('The selected writing template is not available.', 'templateId', 404);
-  if (!canUseWriterTemplate(userPlan, template.requiredPlan)) throw new WriterValidationError(`${template.name} requires the ${template.requiredPlan === 'pro_plus' ? 'Pro Plus' : 'Pro'} plan.`, 'templateId', 403);
+  if (!canUseWriterTemplate(userPlan, template.requiredPlan)) throw new WriterValidationError(`${template.name} requires the ${template.requiredPlan === 'pro_plus' ? 'Pro' : 'Starter'} plan.`, 'templateId', 403);
 
   const rawFields = raw.fields && typeof raw.fields === 'object' && !Array.isArray(raw.fields) ? raw.fields as Record<string, unknown> : {};
   const fields: Record<string, string> = {};
