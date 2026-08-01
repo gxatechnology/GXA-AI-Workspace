@@ -25,17 +25,18 @@ import {
   validateGenerateRequest, validateVisionRequest,
 } from './server/media.js';
 import {
-  acceptInvitation, addTeamMember, adminScopes, applyPlatformMigration, audit, authenticateApiKey, AuthenticationError,
+  acceptInvitation, addTeamMember, adminAudit, adminScopes, applyPlatformMigration, audit, authenticateApiKey, AuthenticationError,
   bearerToken, completeDataExport, createApiKey, createAutomation, createOrganization,
   createSession, createTeam, createWebhook, executeAutomation, hashPassword, inviteMember,
   listAccessibleWorkspaces, PlatformError, QuotaError, publicUser, publicWebhook, requestDataExport,
-  failDataExport, processDataExport, removeTeamMember, requestDeletion, requireAdminScope, resendInvitation, resolveApiKeyContext, resolveSession, resolveTenantContext, rotateApiKey, rotateWebhookSecret,
+  failDataExport, processDataExport, removeTeamMember, requestDeletion, requireAdminRead, requireAdminScope, requireSuperAdmin, resendInvitation, resolveApiKeyContext, resolveSession, resolveTenantContext, rotateApiKey, rotateWebhookSecret,
   securityEvent, setActiveWorkspace, tenantStoreKey, updateMembership, verifyPassword, reserveUsage, commitUsage, releaseUsage,
 } from './server/platform.js';
 import {
-  applyRazorpayWebhook, associatePlanSelection, billingCheckoutAvailable, billingPersistenceReady, BillingError, createCheckout, createContactSalesLead,
-  createPlanSelection, currentPlanSummary, pricingComparison, publicPlans, publicSelection, razorpayConfigured,
-  recordBillingEvent, resolveFeatureGate, resolvePlanSelection, verifyCheckoutPayment, verifyWebhookSignature,
+  activeBillingEnvironment, activeBillingMode, applyRazorpayWebhook, associatePlanSelection, billingCheckoutAvailability, billingCheckoutAvailable, billingPersistenceReady, BillingError,
+  cancelRecurringSubscription, createCheckout, createContactSalesLead, createPlanSelection, createRecurringSubscription, currentPlanSummary, paymentHistory,
+  pricingComparison, publicPlans, publicSelection, publicSubscriptionRecord, razorpayConfigured, razorpayWebhookConfigured, recordBillingEvent,
+  resolveFeatureGate, resolvePlanSelection, verifyCheckoutPayment, verifyRecurringSubscription, verifyWebhookSignature,
 } from './server/billing.js';
 import { ADMIN_ROLES, API_SCOPES, AUTOMATION_ACTIONS, AUTOMATION_TRIGGERS, FEATURE_PLAN_REQUIREMENTS, INTEGRATION_REGISTRY, ORGANIZATION_ROLES, PLAN_REGISTRY, WEBHOOK_EVENTS, normalizePlanId, planIncludesFeature } from './shared/platformRegistry.js';
 import { validateAIEnvironment, publicAIEnvironment } from './server/ai/config.js';
@@ -44,7 +45,9 @@ import { AIProviderError, type AIMessage, type AIProviderResult, type AIToolKey 
 import { AI_MODEL_REGISTRY, AI_TOOL_ROUTING, DIRECT_GEMINI_MEDIA_MODELS, modelKeyForProviderId, publicModelRegistry, resolveToolRoute } from './server/ai/registry.js';
 import { ApplicationPersistence } from './server/persistence/index.js';
 import { changeAccountPassword, findUserByEmail, issueEmailVerification, issuePasswordReset, readAccountWorkspaceState, registerAccount, resetPassword, updateAccountProfile, verifyAccountEmail, writeAccountWorkspaceState } from './server/account.js';
-import { sendPasswordResetEmail, sendVerificationEmail } from './server/authEmail.js';
+import { authEmailConfigured, sendBillingLifecycleEmail, sendPasswordResetEmail, sendVerificationEmail } from './server/authEmail.js';
+import { parseAdminListQuery, PostgresAdminRepository, reactivateAccount, suspendAccount, usersCsv } from './server/admin.js';
+import { BillingAnalyticsRepository, parsePaymentQuery, parseReportingQuery, parseSubscriptionQuery, paymentsCsv, subscriptionsCsv } from './server/billingAnalytics.js';
 
 const environmentFile = {} as Record<string, string>;
 const localEnvironmentFile = {} as Record<string, string>;
@@ -64,10 +67,11 @@ const DB_FILE = process.env.GXA_DB_FILE
   : path.join(os.tmpdir(), 'gxa-ai-workspace', 'db.json');
 const persistence = new ApplicationPersistence(process.env, DB_FILE);
 await persistence.initialize();
+if (!activeBillingMode()) console.warn(JSON.stringify({ event: 'billing.configuration_warning', code: 'BILLING_MODE_NOT_CONFIGURED', message: 'Checkout is disabled until BILLING_MODE is set to orders or subscriptions.' }));
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '24mb', verify: (req, _res, buffer) => { (req as any).rawBody = buffer.toString('utf8'); } }));
+app.use(express.json({ limit: '24mb', verify: (req, _res, buffer) => { (req as any).rawBody = Buffer.from(buffer); } }));
 app.use((req, res, next) => {
   const startedAt = Date.now();
   const requestId = String(req.headers['x-request-id'] || crypto.randomUUID()).slice(0, 100);
@@ -76,6 +80,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.path.startsWith('/admin')) res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
   const origin = String(req.headers.origin || '');
   const allowed = String(process.env.APP_ORIGIN || '').split(',').map(item => item.trim()).filter(Boolean);
   if (origin && allowed.length && !allowed.includes(origin)) return res.status(403).json({ error: 'Origin is not allowed.', code: 'ORIGIN_DENIED', requestId });
@@ -117,7 +122,7 @@ const getUserId = (req: express.Request) => {
   return auth?.user.id || null;
 };
 
-const getContext = (req: express.Request, db = readDb()) => resolveTenantContext(db, sessionToken(req));
+const getContext = (req: express.Request, db = readDb()) => { const context = resolveTenantContext(db, sessionToken(req)); if (context.activityUpdated) writeDb(db); return context; };
 const optionalContext = (req: express.Request, db: any) => { try { return sessionToken(req) ? getContext(req, db) : null; } catch { return null; } };
 const getResourceKey = (req: express.Request, db: any) => tenantStoreKey(getContext(req, db));
 const safeError = (res: express.Response, error: any, fallback = 'Request failed.') => {
@@ -125,6 +130,22 @@ const safeError = (res: express.Response, error: any, fallback = 'Request failed
   return res.status(status).json({ error: error instanceof PlatformError ? error.message : fallback, code: error instanceof PlatformError ? error.code : 'INTERNAL_ERROR' });
 };
 const requireRecentAuthentication = (context: any, maximumAgeMs = 30 * 60_000) => { if (!context.session?.createdAt || Date.now() - Date.parse(context.session.createdAt) > maximumAgeMs) throw new PlatformError('Recent authentication is required for this action.', 403, 'RECENT_AUTHENTICATION_REQUIRED'); };
+const requireAdminMutationOrigin = (req: express.Request) => {
+  const origin = String(req.headers.origin || '');
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const allowed = new Set([...(String(process.env.APP_ORIGIN || '').split(',').map(item => item.trim()).filter(Boolean)), host ? `${protocol}://${host}` : '']);
+  if (!origin || !allowed.has(origin)) throw new PlatformError('Administrative mutation origin could not be verified.', 403, 'CSRF_ORIGIN_DENIED');
+};
+const adminRepository = () => {
+  if (persistence.provider !== 'postgres' || !persistence.postgresPool) throw new PlatformError('Administrative data requires PostgreSQL persistence.', 503, 'ADMIN_DATABASE_REQUIRED');
+  return new PostgresAdminRepository(persistence.postgresPool);
+};
+const adminBillingRepository = () => {
+  if (persistence.provider !== 'postgres' || !persistence.postgresPool) throw new PlatformError('Billing analytics requires PostgreSQL persistence.', 503, 'ADMIN_DATABASE_REQUIRED');
+  return new BillingAnalyticsRepository(persistence.postgresPool);
+};
 const containsSecretField = (value: any): boolean => Boolean(value && typeof value === 'object' && Object.entries(value).some(([key, child]) => /password|secret|api.?key|token|credential/i.test(key) || containsSecretField(child)));
 const validateAdminAIModelOverrides = (value: unknown) => {
   if (value === undefined) return;
@@ -276,13 +297,16 @@ app.post('/api/auth/upgrade', (req, res) => {
 });
 
 // Admin Config & Usage Limits API Endpoints
-app.get('/api/admin/config', (req, res) => {
+app.get('/api/config/public', (req, res) => {
   const db = readDb();
-  const auth = resolveSession(db, sessionToken(req));
-  if (auth) { try { requireAdminScope(auth.user, 'plans.manage'); return res.json({ config: db.config }); } catch {} }
   const { coupons, ai_tool_model_overrides, media_image_model, media_vision_model, ...publicConfig } = db.config;
   publicConfig.chat_models = publicModelRegistry('free', aiEnvironment.defaultProvider).map(model => ({ id: model.key, name: model.displayName, multimodal: model.supportedModalities.includes('image'), plan: model.requiredPlan }));
   res.json({ config: publicConfig });
+});
+
+app.get('/api/admin/config', (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'plans.manage'); res.setHeader('Cache-Control', 'no-store'); res.json({ config: db.config }); }
+  catch (error) { safeError(res, error); }
 });
 
 app.post('/api/admin/config', (req, res) => {
@@ -316,11 +340,8 @@ app.post('/api/usage/increment', (req, res) => {
 
 // Centralized pricing and platform APIs. Plan selection is server-owned and amount-free.
 const pricingPlansResponse = () => ({
-  currency: 'INR', plans: publicPlans(), comparison: pricingComparison(), provider: billingCheckoutAvailable() ? 'razorpay' : null,
-  checkoutAvailability: {
-    available: billingCheckoutAvailable(),
-    reason: !razorpayConfigured() ? 'payment_provider_not_configured' : !billingPersistenceReady() ? 'durable_billing_storage_required' : null,
-  },
+  currency: 'INR', plans: publicPlans(), comparison: pricingComparison(), provider: billingCheckoutAvailable(persistence.provider) ? 'razorpay' : null,
+  checkoutAvailability: billingCheckoutAvailability(persistence.provider),
 });
 app.get('/api/pricing/plans', (_req, res) => { res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300'); res.json(pricingPlansResponse()); });
 app.get('/api/platform/plans', (_req, res) => { res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300'); res.json(pricingPlansResponse()); });
@@ -328,7 +349,7 @@ app.post('/api/pricing/selection', rateLimit('plan-selection', 30, 60_000), (req
 app.get('/api/pricing/selection', (req, res) => { try { const db = readDb(); const context = optionalContext(req, db); const selection = resolvePlanSelection(db, selectionToken(req), context ? { userId: context.user.id, tenantType: context.tenantType, tenantId: context.tenantId } : undefined, false); res.setHeader('Cache-Control', 'no-store'); res.json({ selection: publicSelection(selection), plan: selection ? publicPlans().find(plan => plan.key === selection.planKey) : null }); } catch (error) { safeError(res, error); } });
 app.delete('/api/pricing/selection', (req, res) => { try { const db = readDb(); const selection = resolvePlanSelection(db, selectionToken(req), undefined, false); if (selection) { selection.status = 'cancelled'; selection.updatedAt = new Date().toISOString(); writeDb(db); } res.setHeader('Set-Cookie', `${PLAN_SELECTION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`); res.json({ success: true }); } catch (error) { safeError(res, error); } });
 app.get('/api/pricing/features/:featureKey', (req, res) => { try { const db = readDb(); const context = optionalContext(req, db); res.setHeader('Cache-Control', 'no-store'); res.json(resolveFeatureGate(String(req.params.featureKey || ''), context?.planId || 'free')); } catch (error) { safeError(res, error); } });
-app.post('/api/pricing/events', rateLimit('pricing-events', 120, 60_000), (req, res) => { try { const db = readDb(); const event = recordBillingEvent(db, String(req.body?.event || ''), req.body?.metadata || {}); if (!event) throw new BillingError('Unsupported pricing event.', 400, 'EVENT_INVALID'); writeDb(db); res.status(202).json({ accepted: true }); } catch (error) { safeError(res, error); } });
+app.post('/api/pricing/events', rateLimit('pricing-events', 120, 60_000), (req, res) => { try { const db = readDb(); const event = recordBillingEvent(db, String(req.body?.event || ''), req.body?.metadata || {}); if (!event) throw new BillingError('Unsupported pricing event.', 400, 'EVENT_INVALID'); writeDb(db); res.status(200).json({ accepted: true }); } catch (error) { safeError(res, error); } });
 app.post('/api/pricing/contact-sales', rateLimit('contact-sales', 10, 60 * 60_000), (req, res) => { try { const db = readDb(); const lead = createContactSalesLead(db, req.body, selectionToken(req), optionalContext(req, db)); writeDb(db); res.status(201).json({ lead }); } catch (error) { safeError(res, error); } });
 app.get('/api/platform/context', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const workspaces = listAccessibleWorkspaces(db, context.user.id); writeDb(db); res.json({ context: { workspace: context.workspace, tenantType: context.tenantType, tenantId: context.tenantId, organization: context.organization, role: context.role, permissions: context.permissions, planId: context.planId, entitlements: context.entitlements, limits: context.limits, featureFlags: context.featureFlags }, workspaces, user: publicUser(context.user) }); } catch (error) { safeError(res, error); } });
 app.post('/api/platform/context/activate', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const workspace = setActiveWorkspace(db, context, String(req.body.workspaceId || '')); writeDb(db); res.json({ workspace }); } catch (error) { safeError(res, error); } });
@@ -360,12 +381,13 @@ app.get('/api/dashboard', (req, res) => { try {
   res.setHeader('Cache-Control', 'no-store'); res.json({ user: publicUser(context.user), workspace: context.workspace, plan: currentPlanSummary(context, db), recentProjects, recentDocuments, recentAIHistory });
 } catch (error) { safeError(res, error); } });
 app.get('/api/entitlements/current', (req, res) => { try { const db = readDb(); const context = optionalContext(req, db); if (context) return res.json(currentPlanSummary(context, db)); const guest = { plan: publicPlans().find(plan => plan.key === 'free'), currentPlanKey: 'free', subscriptionStatus: 'free', entitlements: Object.fromEntries(Object.keys(FEATURE_PLAN_REQUIREMENTS).map(key => [key, planIncludesFeature('free', key)])), limits: PLAN_REGISTRY.free.limits }; res.json(guest); } catch (error) { safeError(res, error); } });
-app.get('/api/platform/billing', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('billing.view')) throw new PlatformError('Billing viewing permission required.', 403, 'AUTHORIZATION_DENIED'); const subscriptions = Object.values<any>(db.subscriptions).filter(item => item.tenantType === context.tenantType && item.tenantId === context.tenantId); const invoices = Object.values<any>(db.invoices || {}).filter(item => item.tenantType === context.tenantType && item.tenantId === context.tenantId); res.json({ ...currentPlanSummary(context, db), subscriptions, invoices, provider: billingCheckoutAvailable() ? 'razorpay' : null, checkoutAvailability: pricingPlansResponse().checkoutAvailability, billingPortal: { available: false, reason: 'Razorpay does not provide a hosted customer billing portal in this integration.' } }); } catch (error) { safeError(res, error); } });
+app.get('/api/platform/billing', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (context.tenantType === 'organization' && !context.permissions.includes('billing.view')) throw new PlatformError('Billing viewing permission required.', 403, 'AUTHORIZATION_DENIED'); const subscriptions = Object.values<any>(db.subscriptions).filter(item => item.tenantType === context.tenantType && item.tenantId === context.tenantId).map(publicSubscriptionRecord); const payments = paymentHistory(db, context); res.json({ ...currentPlanSummary(context, db), billingMode: activeBillingMode(), subscriptions, payments, lastSuccessfulPayment: payments.find(item => item.status === 'captured') || null, provider: billingCheckoutAvailable(persistence.provider) ? 'razorpay' : null, checkoutAvailability: pricingPlansResponse().checkoutAvailability, billingPortal: { available: activeBillingMode() === 'subscriptions', reason: activeBillingMode() === 'subscriptions' ? null : 'Recurring subscription management is not enabled.' } }); } catch (error) { safeError(res, error); } });
+app.get('/api/billing/payments', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.setHeader('Cache-Control', 'no-store'); res.json({ payments: paymentHistory(db, context) }); } catch (error) { safeError(res, error); } });
 const checkoutHandler = async (req: express.Request, res: express.Response) => {
   let db: any = null; let context: any = null;
   try {
     db = readDb(); context = getContext(req, db);
-    const checkout = await createCheckout(db, context, req.body, fetch, selectionToken(req));
+    const checkout = await createCheckout(db, context, req.body, fetch, selectionToken(req), persistence.provider);
     writeDb(db); res.status(201).json({ checkout });
   } catch (error) {
     if (db) {
@@ -377,10 +399,47 @@ const checkoutHandler = async (req: express.Request, res: express.Response) => {
 };
 app.post('/api/billing/checkout', rateLimit('checkout', 10, 60 * 60_000), checkoutHandler);
 app.post('/api/platform/billing/checkout', rateLimit('checkout-compat', 10, 60 * 60_000), checkoutHandler);
-const verifyHandler = async (req: express.Request, res: express.Response) => { try { const db = readDb(); const context = getContext(req, db); const result = await verifyCheckoutPayment(db, context, req.body); writeDb(db); res.json(result); } catch (error) { safeError(res, error); } };
+const verifyHandler = async (req: express.Request, res: express.Response) => {
+  let db: any = null;
+  try { db = readDb(); const context = getContext(req, db); const result = await verifyCheckoutPayment(db, context, req.body); writeDb(db); res.json(result); }
+  catch (error) { if (db) { try { writeDb(db); } catch {} } safeError(res, error); }
+};
 app.post('/api/billing/verify', rateLimit('payment-verify', 30, 60 * 60_000), verifyHandler);
 app.post('/api/platform/billing/verify', rateLimit('payment-verify-compat', 30, 60 * 60_000), verifyHandler);
-const webhookHandler = (req: express.Request, res: express.Response) => { const signature = String(req.headers['x-razorpay-signature'] || ''); const rawBody = String((req as any).rawBody || ''); if (!verifyWebhookSignature(rawBody, signature)) return res.status(401).json({ error: 'Invalid webhook signature.', code: 'WEBHOOK_SIGNATURE_INVALID' }); try { const db = readDb(); const eventId = String(req.headers['x-razorpay-event-id'] || req.body?.payload?.payment?.entity?.id || crypto.randomUUID()); const result = applyRazorpayWebhook(db, eventId, req.body); writeDb(db); res.json({ received: true, duplicate: result.duplicate, rejected: Boolean((result as any).rejected) }); } catch (error) { safeError(res, error, 'Billing webhook processing failed.'); } };
+const subscriptionCreationLocks = new Map<string, number>();
+app.post('/api/billing/subscriptions', rateLimit('subscription-create', 10, 60 * 60_000), async (req, res) => {
+  let db: any = null; let lockKey = '';
+  try {
+    db = readDb(); const context = getContext(req, db); lockKey = `${context.tenantType}:${context.tenantId}:${context.user.id}`;
+    const lockedAt = subscriptionCreationLocks.get(lockKey); if (lockedAt && Date.now() - lockedAt < 30_000) throw new BillingError('A subscription is already being prepared.', 409, 'SUBSCRIPTION_CREATION_IN_PROGRESS');
+    subscriptionCreationLocks.set(lockKey, Date.now()); persistence.afterCommit(() => subscriptionCreationLocks.delete(lockKey));
+    const result = await createRecurringSubscription(db, context, req.body, fetch, selectionToken(req), persistence.provider);
+    writeDb(db); res.status(201).json(result);
+  } catch (error) { if (db) { try { writeDb(db); } catch {} } if (lockKey && !db) subscriptionCreationLocks.delete(lockKey); safeError(res, error); }
+});
+app.post('/api/billing/subscriptions/verify', rateLimit('subscription-verify', 30, 60 * 60_000), async (req, res) => {
+  let db: any = null;
+  try { db = readDb(); const context = getContext(req, db); const result = await verifyRecurringSubscription(db, context, req.body); writeDb(db); res.json(result); }
+  catch (error) { if (db) { try { writeDb(db); } catch {} } safeError(res, error); }
+});
+app.post('/api/billing/subscriptions/:id/cancel', rateLimit('subscription-cancel', 5, 60 * 60_000), async (req, res) => {
+  let db: any = null;
+  try { db = readDb(); const context = getContext(req, db); requireRecentAuthentication(context); const result = await cancelRecurringSubscription(db, context, req.params.id, req.body); writeDb(db); if (!result.duplicate) persistence.afterCommit(() => { sendBillingLifecycleEmail({ email: context.user.email, name: context.user.name }, 'cancellation_scheduled').catch(() => console.warn(JSON.stringify({ event: 'billing.email_failed', notification: 'cancellation_scheduled' }))); }); res.json(result); }
+  catch (error) { if (db) { try { writeDb(db); } catch {} } safeError(res, error); }
+});
+const webhookHandler = (req: express.Request, res: express.Response) => {
+  const signature = String(req.headers['x-razorpay-signature'] || ''); const rawBody = (req as any).rawBody as Buffer | undefined;
+  if (!rawBody || !verifyWebhookSignature(rawBody.toString('utf8'), signature)) return res.status(401).json({ error: 'Invalid webhook signature.', code: 'WEBHOOK_SIGNATURE_INVALID' });
+  const eventId = String(req.headers['x-razorpay-event-id'] || '').trim();
+  if (!eventId) return res.status(400).json({ error: 'Webhook event identifier is required.', code: 'WEBHOOK_EVENT_ID_REQUIRED' });
+  try {
+    const db = readDb(); const result = applyRazorpayWebhook(db, eventId, req.body, crypto.createHash('sha256').update(rawBody).digest('hex')); writeDb(db);
+    const subscription = (result as any).subscription; const user = subscription?.userId ? db.users?.[subscription.userId] : null;
+    for (const notification of (result as any).notifications || []) if (user) persistence.afterCommit(() => { sendBillingLifecycleEmail({ email: user.email, name: user.name }, notification).catch(() => console.warn(JSON.stringify({ event: 'billing.email_failed', notification }))); });
+    res.json({ received: true, duplicate: result.duplicate, rejected: Boolean((result as any).rejected) });
+  } catch (error) { safeError(res, error, 'Billing webhook processing failed.'); }
+};
+app.post('/api/webhooks/razorpay', rateLimit('razorpay-webhook', 300, 60_000), webhookHandler);
 app.post('/api/billing/webhook', rateLimit('billing-webhook', 300, 60_000), webhookHandler);
 app.post('/api/platform/billing/webhook', rateLimit('billing-webhook-compat', 300, 60_000), webhookHandler);
 
@@ -414,8 +473,90 @@ app.post('/api/platform/data-exports/:id/download-token', (req, res) => { try { 
 app.get('/api/platform/data-exports/:id/download', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const record = db.dataExports[req.params.id]; if (!record || record.tenantId !== context.tenantId || record.status !== 'ready') return res.status(404).json({ error: 'Export is unavailable.' }); const token = String(req.query.token || ''); if (!record.downloadTokenHash || crypto.createHash('sha256').update(token).digest('hex') !== record.downloadTokenHash || Date.parse(record.expiresAt) <= Date.now()) throw new PlatformError('Export link is invalid or expired.', 403, 'EXPORT_LINK_INVALID'); res.setHeader('Content-Type', 'application/json'); res.setHeader('Content-Disposition', 'attachment; filename="gxa-workspace-export.json"'); res.send(Buffer.from(record.payload, 'base64')); } catch (error) { safeError(res, error); } });
 app.post('/api/platform/deletion-requests', (req, res) => { try { const db = readDb(); const context = getContext(req, db); if (!verifyPassword(String(req.body.password || ''), String(context.user.password || ''))) throw new AuthenticationError('Reauthentication failed.'); const type = req.body.type === 'organization' ? 'organization' : 'account'; const targetId = type === 'organization' ? String(req.body.targetId || '') : context.user.id; const record = requestDeletion(db, context, type, targetId); writeDb(db); res.status(202).json({ request: record }); } catch (error) { safeError(res, error); } });
 
-app.get('/api/admin/platform', rateLimit('admin-read', 120, 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'users.read'); const users = Object.values<any>(db.users).map(user => publicUser(user)); const organizations = Object.values<any>(db.organizations).map(item => ({ ...item, memberCount: Object.values<any>(db.organizationMemberships).filter(member => member.organizationId === item.id && member.status === 'active').length })); const subscriptions = Object.values<any>(db.subscriptions); const usageTotals = db.usageEvents.reduce((result: any, event: any) => { result[event.dimension] = Number(result[event.dimension] || 0) + Number(event.quantity || 0); return result; }, {}); const aiProviders = Object.entries(aiService.providerStatus()).map(([id, status]) => ({ id, category: 'AI', ...status, state: status.enabled ? (status.configured ? 'configured' : 'unconfigured') : 'disabled' })); res.json({ users, organizations, subscriptions, usageTotals, flags: Object.values(db.featureFlags), providers: [...aiProviders, { id: 'razorpay', category: 'Payment', configured: razorpayConfigured(), state: razorpayConfigured() ? 'configured' : 'unconfigured' }], aiRequests: (db.aiProviderRequests || []).slice(-100).reverse(), health: { database: 'available', storage: persistence.provider, billingStorage: billingPersistenceReady() ? 'available' : 'durable_storage_required', queue: 'in-process', email: 'not_configured', paymentWebhooks: razorpayConfigured() ? 'configured' : 'not_configured' }, adminRoles: ADMIN_ROLES, audit: db.auditEvents.slice(-100).reverse(), security: db.securityEvents.slice(-100).reverse() }); } catch (error) { safeError(res, error); } });
-app.patch('/api/admin/users/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'users.read'); const user = db.users[req.params.id]; if (!user) return res.status(404).json({ error: 'User not found.' }); if (req.body.status && ['active', 'suspended'].includes(req.body.status)) { requireAdminScope(context.user, 'organizations.manage'); requireRecentAuthentication(context); if (!String(req.body.reason || '').trim()) throw new PlatformError('A reason is required.', 400, 'REASON_REQUIRED'); user.status = req.body.status; if (user.status === 'suspended') for (const session of Object.values<any>(db.sessions).filter(item => item.userId === user.id)) session.revokedAt = new Date().toISOString(); audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: `user.${user.status}`, resourceType: 'user', resourceId: user.id, metadata: { reason: String(req.body.reason).slice(0, 200) } }); } writeDb(db); res.json({ user: publicUser(user) }); } catch (error) { safeError(res, error); } });
+app.get('/api/admin/summary', rateLimit('admin-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const summary = await adminRepository().summary(); res.setHeader('Cache-Control', 'no-store'); res.json({ ...summary, emailVerificationConfigured: authEmailConfigured() }); }
+  catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/signup-trend', rateLimit('admin-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const range = String(req.query.range || '7d'); if (!['7d', '30d'].includes(range)) throw new PlatformError('Range must be 7d or 30d.', 422, 'VALIDATION_FAILED'); res.setHeader('Cache-Control', 'no-store'); res.json(await adminRepository().signupTrend(range as '7d' | '30d')); }
+  catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/users', rateLimit('admin-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseAdminListQuery(req.query as Record<string, unknown>); res.setHeader('Cache-Control', 'no-store'); res.json({ ...(await adminRepository().listUsers(query)), emailVerificationConfigured: authEmailConfigured() }); }
+  catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/users/export.csv', rateLimit('admin-export', 5, 60 * 60_000), async (req, res) => {
+  try {
+    const db = readDb(); const context = getContext(req, db); const actorRole = requireAdminRead(context.user); const query = parseAdminListQuery(req.query as Record<string, unknown>);
+    const result = await adminRepository().listUsers(query, 10_000);
+    const exportedAt = new Date().toISOString();
+    const auditRecord = adminAudit(db, { actorUserId: context.user.id, actorRole, action: 'users.exported', targetType: 'users', targetId: 'filtered', reason: 'Filtered administrator CSV export', metadata: { rowCount: result.users.length, limited: result.pagination.total > 10_000 }, ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] });
+    writeDb(db);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="gxa-users-${exportedAt.slice(0, 10)}.csv"`); res.setHeader('X-Audit-Event-Id', auditRecord.id); res.send(usersCsv(result.users));
+  } catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/users/:userId', rateLimit('admin-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const detail = await adminRepository().userDetail(req.params.userId); if (!detail) throw new PlatformError('User not found.', 404, 'USER_NOT_FOUND'); res.setHeader('Cache-Control', 'no-store'); res.json({ ...detail, emailVerificationConfigured: authEmailConfigured() }); }
+  catch (error) { safeError(res, error); }
+});
+app.post('/api/admin/users/:userId/suspend', rateLimit('admin-mutation', 20, 60 * 60_000), (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireAdminMutationOrigin(req); requireRecentAuthentication(context); const result = suspendAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), revokedSessions: result.revokedSessions, duplicate: result.duplicate }); }
+  catch (error) { safeError(res, error); }
+});
+app.post('/api/admin/users/:userId/reactivate', rateLimit('admin-mutation', 20, 60 * 60_000), (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireAdminMutationOrigin(req); requireRecentAuthentication(context); const result = reactivateAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), duplicate: result.duplicate }); }
+  catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/audit', rateLimit('admin-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); res.setHeader('Cache-Control', 'no-store'); res.json(await adminRepository().audit(req.query as Record<string, unknown>)); }
+  catch (error) { safeError(res, error); }
+});
+app.get('/api/admin/billing/summary', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseReportingQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().summary(query)); }
+  catch (error) { safeError(res, error, 'Billing summary could not be loaded.'); }
+});
+app.get('/api/admin/billing/revenue-trend', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseReportingQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().revenueTrend(query)); }
+  catch (error) { safeError(res, error, 'Revenue trend could not be loaded.'); }
+});
+app.get('/api/admin/billing/plan-distribution', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseReportingQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().planDistribution(query)); }
+  catch (error) { safeError(res, error, 'Plan revenue distribution could not be loaded.'); }
+});
+app.get('/api/admin/billing/health', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseReportingQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().health(query)); }
+  catch (error) { safeError(res, error, 'Billing health could not be loaded.'); }
+});
+app.get('/api/admin/payments', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parsePaymentQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().listPayments(query)); }
+  catch (error) { safeError(res, error, 'Payment records could not be loaded.'); }
+});
+app.get('/api/admin/payments/export.csv', rateLimit('admin-billing-export', 5, 60 * 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); const actorRole = requireSuperAdmin(context.user); const query = parsePaymentQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); const result = await adminBillingRepository().listPayments(query, 10_000); const auditRecord = adminAudit(db, { actorUserId: context.user.id, actorRole, action: 'billing.payments_exported', targetType: 'payments', targetId: query.environment, reason: 'Filtered payment CSV export', metadata: { rowCount: result.payments.length, limited: result.pagination.total > 10_000, environment: query.environment }, ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); const date = new Date().toISOString().slice(0, 10); res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="gxa-payments-${query.environment}-${date}.csv"`); res.setHeader('X-Audit-Event-Id', auditRecord.id); res.send(paymentsCsv(result.payments)); }
+  catch (error) { safeError(res, error, 'Payment export could not be generated.'); }
+});
+app.get('/api/admin/payments/:paymentId', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const detail = await adminBillingRepository().paymentDetail(req.params.paymentId); if (!detail) throw new PlatformError('Payment was not found.', 404, 'PAYMENT_NOT_FOUND'); res.setHeader('Cache-Control', 'no-store'); res.json(detail); }
+  catch (error) { safeError(res, error, 'Payment details could not be loaded.'); }
+});
+app.get('/api/admin/subscriptions', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const query = parseSubscriptionQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); res.setHeader('Cache-Control', 'no-store'); res.json(await adminBillingRepository().listSubscriptions(query)); }
+  catch (error) { safeError(res, error, 'Subscription records could not be loaded.'); }
+});
+app.get('/api/admin/subscriptions/export.csv', rateLimit('admin-billing-export', 5, 60 * 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); const actorRole = requireSuperAdmin(context.user); const query = parseSubscriptionQuery(req.query as Record<string, unknown>, activeBillingEnvironment()); const result = await adminBillingRepository().listSubscriptions(query, 10_000); const auditRecord = adminAudit(db, { actorUserId: context.user.id, actorRole, action: 'billing.subscriptions_exported', targetType: 'subscriptions', targetId: query.environment, reason: 'Filtered subscription CSV export', metadata: { rowCount: result.subscriptions.length, limited: result.pagination.total > 10_000, environment: query.environment }, ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); const date = new Date().toISOString().slice(0, 10); res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="gxa-subscriptions-${query.environment}-${date}.csv"`); res.setHeader('X-Audit-Event-Id', auditRecord.id); res.send(subscriptionsCsv(result.subscriptions)); }
+  catch (error) { safeError(res, error, 'Subscription export could not be generated.'); }
+});
+app.get('/api/admin/subscriptions/:subscriptionId', rateLimit('admin-billing-read', 120, 60_000), async (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); const detail = await adminBillingRepository().subscriptionDetail(req.params.subscriptionId); if (!detail) throw new PlatformError('Subscription was not found.', 404, 'SUBSCRIPTION_NOT_FOUND'); res.setHeader('Cache-Control', 'no-store'); res.json(detail); }
+  catch (error) { safeError(res, error, 'Subscription details could not be loaded.'); }
+});
+app.post('/api/admin/billing/reconcile', rateLimit('admin-billing-reconcile', 2, 60 * 60_000), (req, res) => {
+  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); res.status(503).json({ error: 'Billing reconciliation remains available through the protected CLI because synchronous provider reconciliation is unsafe in the serverless request lifecycle.', code: 'RECONCILIATION_CLI_REQUIRED' }); }
+  catch (error) { safeError(res, error, 'Billing reconciliation is unavailable.'); }
+});
+app.get('/api/admin/platform', rateLimit('admin-read', 120, 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); res.status(410).json({ error: 'Use the focused Admin Overview, Users, and Audit Log endpoints.', code: 'ADMIN_PLATFORM_REPLACED' }); } catch (error) { safeError(res, error); } });
+app.patch('/api/admin/users/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); res.status(410).json({ error: 'Use the explicit suspend or reactivate endpoint.', code: 'ADMIN_USER_PATCH_REPLACED' }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/organizations/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'organizations.manage'); requireRecentAuthentication(context); const organization = db.organizations[req.params.id]; if (!organization) return res.status(404).json({ error: 'Organization not found.' }); const status = String(req.body.status || ''); if (!['active', 'suspended', 'archived'].includes(status)) throw new PlatformError('Unsupported organization status.', 400, 'INVALID_STATUS'); if (!String(req.body.reason || '').trim()) throw new PlatformError('A reason is required.', 400, 'REASON_REQUIRED'); organization.status = status; organization.updatedAt = new Date().toISOString(); audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: `organization.${status}`, resourceType: 'organization', resourceId: organization.id, metadata: { reason: String(req.body.reason).slice(0, 200) } }); writeDb(db); res.json({ organization }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/feature-flags/:key', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'flags.manage'); requireRecentAuthentication(context); const flag = db.featureFlags[req.params.key]; if (!flag) return res.status(404).json({ error: 'Feature flag not found.' }); flag.enabled = Boolean(req.body.enabled); flag.updatedAt = new Date().toISOString(); flag.updatedBy = context.user.id; audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: 'feature_flag.updated', resourceType: 'feature_flag', resourceId: flag.key, metadata: { enabled: flag.enabled } }); writeDb(db); res.json({ flag }); } catch (error) { safeError(res, error); } });
 app.get('/api/admin/migrations', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'health.read'); const dryRun = applyPlatformMigration(db, { dryRun: true }); res.json({ currentVersion: db.schemaVersion, targetVersion: 12, pendingChanges: dryRun.changes, destructive: false }); } catch (error) { safeError(res, error); } });
