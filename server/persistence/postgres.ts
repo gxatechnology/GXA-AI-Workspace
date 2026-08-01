@@ -185,32 +185,27 @@ export async function previewLegacyJsonFile(pool: Pool, file: string) {
   return previewLegacyJsonImport(pool, source, sourceHash);
 }
 
+export async function verifyPostgresRuntime(pool: Pool) {
+  const status = await migrationStatus(pool);
+  if (status.pending.length) throw new PersistenceUnavailableError();
+  await pool.query('SELECT 1');
+  const imported = await pool.query('SELECT 1 FROM gxa_json_imports LIMIT 1');
+  if (!imported.rowCount) throw new PersistenceUnavailableError();
+}
+
 export class PostgresDatabaseAdapter implements DatabaseAdapter {
   readonly provider = 'postgres' as const;
   readonly pool: Pool;
-  private migrationPool: Pool | null;
 
   constructor(config: PersistenceConfig) {
     this.pool = createPostgresPool(config.databaseUrl!, config);
-    this.migrationPool = createPostgresPool(config.directDatabaseUrl!, config, 1);
   }
 
   async initialize() {
     try {
-      const migrationPool = this.migrationPool;
-      if (!migrationPool) throw new PersistenceUnavailableError();
-      const status = await migrationStatus(migrationPool);
-      if (status.pending.length) throw new PersistenceUnavailableError();
-      await this.pool.query('SELECT 1');
-      const imported = await this.pool.query('SELECT 1 FROM gxa_json_imports LIMIT 1');
-      if (!imported.rowCount) throw new PersistenceUnavailableError();
+      await verifyPostgresRuntime(this.pool);
     } catch {
       throw new PersistenceUnavailableError();
-    } finally {
-      if (this.migrationPool) {
-        await this.migrationPool.end().catch(() => undefined);
-        this.migrationPool = null;
-      }
     }
   }
 
@@ -228,6 +223,5 @@ export class PostgresDatabaseAdapter implements DatabaseAdapter {
 
   async close() {
     await this.pool.end();
-    if (this.migrationPool) await this.migrationPool.end();
   }
 }

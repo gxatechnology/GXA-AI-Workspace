@@ -3,11 +3,13 @@ import crypto from 'node:crypto';
 import test from 'node:test';
 import {
   applyRazorpayWebhook, associatePlanSelection, billingPersistenceReady, createCheckout, createContactSalesLead, createPlanSelection,
-  publicPlans, resolveFeatureGate, resolvePlanSelection, strictPlanKey, validateCoupon,
+  pricingComparison, publicPlans, resolveFeatureGate, resolvePlanSelection, strictPlanKey, validateCoupon,
   currentPlanSummary, verifyCheckoutPayment, verifyPaymentSignature, verifyWebhookSignature,
 } from '../server/billing.js';
 import { applyPlatformMigration, createSession, resolveTenantContext } from '../server/platform.js';
-import { PLAN_REGISTRY, resolvePlanKey } from '../shared/platformRegistry.js';
+import { FEATURE_PLAN_REQUIREMENTS, PLAN_REGISTRY, planIncludesFeature, resolvePlanKey } from '../shared/platformRegistry.js';
+import { BUSINESS_TOOLS } from '../shared/businessRegistry.js';
+import { CAREER_TOOLS } from '../shared/careerRegistry.js';
 
 const previousEnvironment = { key: process.env.RAZORPAY_KEY_ID, secret: process.env.RAZORPAY_KEY_SECRET, webhook: process.env.RAZORPAY_WEBHOOK_SECRET };
 process.env.RAZORPAY_KEY_ID = 'rzp_test_key'; process.env.RAZORPAY_KEY_SECRET = 'test_secret'; process.env.RAZORPAY_WEBHOOK_SECRET = 'webhook_secret';
@@ -41,7 +43,7 @@ function fixture(subscription = 'free') {
 
 const providerOrder = (id: string, capture: (body: any) => void): typeof fetch => (async (_url: any, init: any) => { const body = JSON.parse(String(init.body)); capture(body); return new Response(JSON.stringify({ id, amount: body.amount, currency: body.currency }), { status: 200, headers: { 'Content-Type': 'application/json' } }); }) as any;
 
-async function pendingCheckout(planKey: 'pro' | 'pro_plus' = 'pro') {
+async function pendingCheckout(planKey: 'pro' | 'pro_plus' | 'business-pro' = 'pro') {
   const { db, context } = fixture(); const { token } = createPlanSelection(db, { planKey, sourceTool: 'pricing', returnRoute: 'pricing' }, context); let providerBody: any;
   const checkout = await createCheckout(db, context, { planKey, billingInterval: 'monthly', idempotencyKey: `checkout-${planKey}`, amount: 1 }, providerOrder(`order_${planKey}`, body => { providerBody = body; }), token);
   return { db, context, token, checkout, providerBody };
@@ -49,8 +51,8 @@ async function pendingCheckout(planKey: 'pro' | 'pro_plus' = 'pro') {
 
 test('canonical plan registry exposes deterministic approved INR defaults without annual pricing', () => {
   const plans = publicPlans();
-  assert.deepEqual(plans.map(plan => [plan.key, plan.name, plan.monthlyPrice, plan.currency]), [['free', 'Free', 0, 'INR'], ['pro', 'Starter', 99, 'INR'], ['pro_plus', 'Pro', 149, 'INR']]);
-  assert.deepEqual(Object.keys(PLAN_REGISTRY), ['free', 'pro', 'pro_plus', 'team', 'enterprise']);
+  assert.deepEqual(plans.map(plan => [plan.key, plan.name, plan.monthlyPrice, plan.currency]), [['free', 'Free', 0, 'INR'], ['pro', 'Starter', 99, 'INR'], ['pro_plus', 'Pro', 149, 'INR'], ['business-pro', 'Business Pro', 499, 'INR']]);
+  assert.deepEqual(Object.keys(PLAN_REGISTRY), ['free', 'pro', 'pro_plus', 'business-pro', 'team', 'enterprise']);
   assert.equal(new Set(plans.map(plan => plan.key)).size, plans.length);
   assert.ok(Object.values(PLAN_REGISTRY).every(plan => plan.annualPriceMinor === null));
   assert.ok(plans.every(plan => !(plan as any).razorpayPlanId && !(plan as any).checkoutPriceId));
@@ -59,6 +61,7 @@ test('canonical plan registry exposes deterministic approved INR defaults withou
 test('legacy aliases normalize to canonical keys but price numbers never do', () => {
   assert.equal(resolvePlanKey('premium'), 'pro'); assert.equal(resolvePlanKey('pro-monthly'), 'pro'); assert.equal(resolvePlanKey('pro_monthly'), 'pro');
   assert.equal(resolvePlanKey('premium_plus'), 'pro_plus'); assert.equal(resolvePlanKey('pro-plus'), 'pro_plus'); assert.equal(resolvePlanKey('proplus'), 'pro_plus');
+  assert.equal(resolvePlanKey('business-pro'), 'business-pro'); assert.equal(resolvePlanKey('business_pro'), 'business-pro'); assert.equal(resolvePlanKey('businesspro'), 'business-pro');
   assert.equal(resolvePlanKey('99'), null); assert.equal(resolvePlanKey('149'), null); assert.throws(() => strictPlanKey('149'), /invalid/);
 });
 
@@ -92,6 +95,11 @@ test('checkout maps Pro to 9900 paise and ignores client amount', async () => {
 test('checkout maps customer-facing Pro to 14900 paise and never resolves to Starter', async () => {
   const { checkout, providerBody, db } = await pendingCheckout('pro_plus');
   assert.equal(providerBody.amount, 14900); assert.equal(providerBody.notes.planKey, 'pro_plus'); assert.equal(checkout.summary.planName, 'Pro'); assert.equal(checkout.summary.amountMinor, 14900); assert.equal(db.pendingCheckouts.order_pro_plus.planKey, 'pro_plus');
+});
+
+test('checkout maps Business Pro to 49900 paise from the server registry', async () => {
+  const { checkout, providerBody, db } = await pendingCheckout('business-pro');
+  assert.equal(providerBody.amount, 49900); assert.equal(providerBody.notes.planKey, 'business-pro'); assert.equal(checkout.summary.planName, 'Business Pro'); assert.equal(checkout.summary.amountMinor, 49900); assert.equal(db.pendingCheckouts['order_business-pro'].planKey, 'business-pro');
 });
 
 test('checkout rejects selection mismatch, free, unavailable future plans, invalid interval and idempotency misuse', async () => {
@@ -162,6 +170,53 @@ test('failed payment webhooks update only the pending checkout', async () => {
 test('feature gates enforce minimum plan hierarchy and exclude insufficient upgrades', () => {
   const locked = resolveFeatureGate('paraphraser.premium_modes', 'free'); assert.equal(locked.minimumRequiredPlanKey, 'pro_plus'); assert.equal(locked.allowed, false); assert.ok(!locked.eligibleUpgradePlans.some(plan => plan.key === 'pro')); assert.ok(locked.eligibleUpgradePlans.some(plan => plan.key === 'pro_plus'));
   assert.equal(resolveFeatureGate('grammar.advanced', 'pro').allowed, true); assert.equal(resolveFeatureGate('chat.basic', 'free').allowed, true);
+  for (const feature of ['business.basic', 'career.basic', 'career.resume_builder'] as const) {
+    for (const plan of ['free', 'pro', 'pro_plus'] as const) {
+      const gate = resolveFeatureGate(feature, plan);
+      assert.equal(gate.allowed, false);
+      assert.deepEqual(gate.eligibleUpgradePlans.map(option => option.key), ['business-pro']);
+    }
+  }
+  assert.equal(resolveFeatureGate('business.basic', 'business-pro').allowed, true);
+  assert.equal(resolveFeatureGate('career.basic', 'business-pro').allowed, true);
+  assert.equal(resolveFeatureGate('career.resume_builder', 'business-pro').allowed, true);
+  assert.equal(resolveFeatureGate('business.basic', 'free').presentation?.heading, 'Unlock Business Studio');
+  assert.match(resolveFeatureGate('career.basic', 'free').presentation?.description || '', /Resume Builder, ATS Guidance, Cover Letters, Interview Preparation and Career Studio/);
+  assert.deepEqual(resolveFeatureGate('account.upgrade', 'free').eligibleUpgradePlans.map(plan => plan.key), ['pro', 'pro_plus', 'business-pro']);
+});
+
+test('individual plan entitlements are cumulative and Business Pro is the all-in-one superset', () => {
+  const free = new Set(PLAN_REGISTRY.free.entitlements);
+  const starter = new Set(PLAN_REGISTRY.pro.entitlements);
+  const pro = new Set(PLAN_REGISTRY.pro_plus.entitlements);
+  const businessPro = new Set(PLAN_REGISTRY['business-pro'].entitlements);
+  for (const entitlement of free) assert.equal(starter.has(entitlement), true, `Starter must inherit ${entitlement}`);
+  for (const entitlement of starter) assert.equal(pro.has(entitlement), true, `Pro must inherit ${entitlement}`);
+  for (const entitlement of starter) assert.equal(businessPro.has(entitlement), true, `Business Pro must inherit Starter ${entitlement}`);
+  for (const entitlement of pro) assert.equal(businessPro.has(entitlement), true, `Business Pro must inherit Pro ${entitlement}`);
+  for (const entitlement of ['business_studio', 'career_studio', 'resume_builder', 'resume_import', 'ats_guidance', 'cover_letter_tools', 'career_profile', 'linkedin_bio', 'interview_preparation', 'career_library', 'premium_templates', 'premium_workflows', 'professional_studios'] as const) assert.equal(businessPro.has(entitlement), true);
+  for (const featureKey of Object.keys(FEATURE_PLAN_REQUIREMENTS)) {
+    if (planIncludesFeature('free', featureKey) || planIncludesFeature('pro', featureKey) || planIncludesFeature('pro_plus', featureKey)) assert.equal(planIncludesFeature('business-pro', featureKey), true, `Business Pro must include ${featureKey}`);
+  }
+  for (const featureKey of ['business.basic', 'business.premium', 'career.basic', 'career.resume_builder', 'career.ats_guidance', 'career.cover_letters', 'career.interview_preparation'] as const) {
+    for (const plan of ['free', 'pro', 'pro_plus'] as const) assert.equal(planIncludesFeature(plan, featureKey), false);
+    assert.equal(planIncludesFeature('business-pro', featureKey), true);
+  }
+  for (const limit of ['ai_requests_month', 'project_limit', 'saved_document_limit', 'storage_mb', 'max_input_characters', 'max_output_tokens', 'available_ai_models']) {
+    assert.ok(PLAN_REGISTRY['business-pro'].limits[limit] >= PLAN_REGISTRY.pro_plus.limits[limit], `Business Pro must have the highest ${limit}`);
+  }
+});
+
+test('comparison is generated from real plan, Business and Career registries', () => {
+  const comparison = pricingComparison();
+  assert.deepEqual(comparison.generatedFrom, ['plan_registry', 'business_tool_registry', 'career_tool_registry']);
+  const rows = comparison.sections.flatMap(section => section.rows);
+  assert.equal(rows.filter(row => row.id.startsWith('business-tool-')).length, BUSINESS_TOOLS.length);
+  assert.equal(rows.filter(row => row.id.startsWith('career-tool-')).length, CAREER_TOOLS.filter(tool => tool.status === 'available').length);
+  const proposal = rows.find(row => row.id === 'business-tool-proposal')!;
+  assert.equal(proposal.values.pro_plus?.kind, 'excluded'); assert.equal(proposal.values['business-pro']?.kind, 'included');
+  const resume = rows.find(row => row.id === 'career-tool-resume')!;
+  assert.equal(resume.values.pro_plus?.kind, 'excluded'); assert.equal(resume.values['business-pro']?.kind, 'included');
 });
 
 test('current-plan resolution preserves active cancellation periods and expires inactive access', () => {
@@ -179,7 +234,7 @@ test('current-plan resolution preserves active cancellation periods and expires 
   assert.equal(pastDueSummary.currentPlanKey, 'free'); assert.equal(pastDueSummary.subscriptionStatus, 'past_due');
 });
 
-test('Team and Enterprise architecture is preserved but unavailable in Phase 1 public pricing', () => {
+test('Team and Enterprise architecture remains preserved but unavailable in public pricing', () => {
   assert.equal(PLAN_REGISTRY.team.public, false); assert.equal(PLAN_REGISTRY.team.active, false);
   assert.equal(PLAN_REGISTRY.enterprise.public, false); assert.equal(PLAN_REGISTRY.enterprise.active, false);
   assert.throws(() => strictPlanKey('team'), (error: any) => error.code === 'PLAN_NOT_FOUND');

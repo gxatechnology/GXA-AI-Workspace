@@ -44,6 +44,7 @@ import {
 } from "../../utils/limits";
 import { generateWriterContent, WriterApiError } from "../../utils/writer";
 import { authenticatedFetch } from "../../utils/auth";
+import { canonicalPlanKey } from "../../utils/pricing";
 import { loadWorkspaceState, saveWorkspaceState } from "../../utils/workspaceState";
 
 interface AIWritingProps {
@@ -90,8 +91,12 @@ const countWords = (value: string) =>
   value.trim() ? value.trim().split(/\s+/).length : 0;
 const readingTime = (value: string) =>
   value.trim() ? Math.max(1, Math.ceil(countWords(value) / 225)) : 0;
-const planLabel = (plan: string) =>
-  plan === "pro_plus" ? "Pro" : plan === "pro" ? "Starter" : "Free";
+const planLabel = (plan: string) => {
+  const canonicalPlan = canonicalPlanKey(plan);
+  return canonicalPlan === "business-pro" ? "Business Pro" : canonicalPlan === "pro_plus" ? "Pro" : canonicalPlan === "pro" ? "Starter" : "Free";
+};
+const templatePlanLabel = (plan: string) =>
+  plan === "free" ? "Free" : "Business Pro";
 const authUserFromStorage = () => {
   try {
     const stored = JSON.parse(localStorage.getItem("gxa_user") || "null");
@@ -215,6 +220,9 @@ export default function AIWriting({
     [currentUser],
   );
   const authenticated = Boolean(authenticatedUser?.sessionToken);
+  const canUsePremiumTemplates = ["business-pro", "team", "enterprise"].includes(
+    canonicalPlanKey(currentUser?.subscription || authenticatedUser?.subscription) || "free",
+  );
   const [activeTemplateId, setActiveTemplateId] = useState("ai-writer");
   const activeTemplate = useMemo(
     () =>
@@ -470,7 +478,7 @@ export default function AIWriting({
     setFavorites(next);
   };
   const isLocked = (template: WriterTemplateDefinition) =>
-    !premium && template.requiredPlan !== "free";
+    !canUsePremiumTemplates && template.requiredPlan !== "free";
   const chooseTemplate = (template: WriterTemplateDefinition) => {
     if (isLocked(template)) {
       onOpenUpgradeModal?.();
@@ -1115,7 +1123,7 @@ export default function AIWriting({
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <div className="flex gap-1">
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
-                        {planLabel(template.requiredPlan)}
+                        {templatePlanLabel(template.requiredPlan)}
                       </span>
                       {template.isNew && (
                         <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black text-violet-700 dark:bg-violet-950 dark:text-violet-300">
@@ -1892,7 +1900,7 @@ export default function AIWriting({
                   Plan
                 </span>
                 <p className="mt-1 text-sm font-black">
-                  {planLabel(templatePreview.requiredPlan)}
+                  {templatePlanLabel(templatePreview.requiredPlan)}
                 </p>
               </div>
               <div className="rounded-xl bg-slate-50 p-3 dark:bg-zinc-950">
@@ -1967,7 +1975,7 @@ export default function AIWriting({
                   }}
                   className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white dark:bg-white dark:text-slate-950"
                 >
-                  Compare plans for {planLabel(templatePreview.requiredPlan)}
+                  Compare plans for {templatePlanLabel(templatePreview.requiredPlan)}
                 </button>
               ) : (
                 <button

@@ -34,11 +34,13 @@ test('changing password revokes every other session but keeps the current sessio
   assert.equal(db.sessions[registered.session.record.id].revokedAt, null); assert.ok(otherSession.record.revokedAt); assert.equal(verifyPassword('updated-password-123', registered.user.password), true);
 });
 
-test('Free, Starter, and Pro have distinct server-owned limits and model access', () => {
-  assert.deepEqual([PLAN_REGISTRY.free.name, PLAN_REGISTRY.pro.name, PLAN_REGISTRY.pro_plus.name], ['Free', 'Starter', 'Pro']);
-  assert.ok(PLAN_REGISTRY.free.limits.ai_requests_month < PLAN_REGISTRY.pro.limits.ai_requests_month); assert.ok(PLAN_REGISTRY.pro.limits.ai_requests_month < PLAN_REGISTRY.pro_plus.limits.ai_requests_month);
-  assert.ok(PLAN_REGISTRY.free.limits.project_limit < PLAN_REGISTRY.pro.limits.project_limit); assert.ok(PLAN_REGISTRY.pro.limits.saved_document_limit < PLAN_REGISTRY.pro_plus.limits.saved_document_limit);
-  assert.deepEqual([publicModelRegistry('free').length, publicModelRegistry('pro').length, publicModelRegistry('pro_plus').length], [1, 2, 3]);
+test('Free, Starter, Pro, and Business Pro have distinct server-owned limits and model access', () => {
+  assert.deepEqual([PLAN_REGISTRY.free.name, PLAN_REGISTRY.pro.name, PLAN_REGISTRY.pro_plus.name, PLAN_REGISTRY['business-pro'].name], ['Free', 'Starter', 'Pro', 'Business Pro']);
+  assert.ok(PLAN_REGISTRY.free.limits.ai_requests_month < PLAN_REGISTRY.pro.limits.ai_requests_month); assert.ok(PLAN_REGISTRY.pro.limits.ai_requests_month < PLAN_REGISTRY.pro_plus.limits.ai_requests_month); assert.ok(PLAN_REGISTRY.pro_plus.limits.ai_requests_month < PLAN_REGISTRY['business-pro'].limits.ai_requests_month);
+  assert.ok(PLAN_REGISTRY.free.limits.project_limit < PLAN_REGISTRY.pro.limits.project_limit); assert.ok(PLAN_REGISTRY.pro.limits.saved_document_limit < PLAN_REGISTRY.pro_plus.limits.saved_document_limit); assert.ok(PLAN_REGISTRY.pro_plus.limits.saved_document_limit < PLAN_REGISTRY['business-pro'].limits.saved_document_limit);
+  assert.deepEqual([publicModelRegistry('free').length, publicModelRegistry('pro').length, publicModelRegistry('pro_plus').length, publicModelRegistry('business-pro').length], [1, 2, 3, 3]);
+  assert.equal(PLAN_REGISTRY.pro_plus.entitlements.includes('business_studio'), false); assert.equal(PLAN_REGISTRY.pro_plus.entitlements.includes('career_studio'), false);
+  assert.equal(PLAN_REGISTRY['business-pro'].entitlements.includes('business_studio'), true); assert.equal(PLAN_REGISTRY['business-pro'].entitlements.includes('career_studio'), true);
 });
 
 test('editor state is isolated per account, allowlisted, and size limited', () => {

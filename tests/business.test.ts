@@ -24,7 +24,7 @@ test('guest access and premium entitlements derive from the central tool configu
   assert.equal(freeTool.guestAccess, true);
   assert.equal(premiumTool.guestAccess, false);
   assert.doesNotThrow(() => assertBusinessEntitlement(freeTool, 'free'));
-  assert.throws(() => assertBusinessEntitlement(premiumTool, 'free'), /Pro plan/);
+  assert.throws(() => assertBusinessEntitlement(premiumTool, 'free'), /Business Pro/);
   assert.doesNotThrow(() => assertBusinessEntitlement(premiumTool, 'pro'));
 });
 

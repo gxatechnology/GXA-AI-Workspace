@@ -105,6 +105,10 @@ test('authenticated Settings and Billing surfaces inherit the document dark them
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.getByRole('heading', { name: 'Plan', level: 1 })).toBeVisible();
   await expect(page.getByText('Current plan', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Upgrade Plan' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Manage subscription' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Compare plans' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plan Benefits' })).toBeVisible();
 });
 
 test('upgrade dialog inherits dark tokens and closes with Escape', async ({ page }) => {

@@ -21,12 +21,13 @@ const cleanList = (value: unknown, maxItems = 50) => Array.isArray(value)
   : [];
 
 export function normalizeBusinessPlan(value: unknown): BusinessPlan {
-  return (resolvePlanKey(value) || 'free') === 'free' ? 'free' : 'pro';
+  const plan = resolvePlanKey(value) || 'free';
+  return ['business-pro', 'team', 'enterprise'].includes(plan) ? 'pro' : 'free';
 }
 
 export function assertBusinessEntitlement(tool: BusinessToolDefinition, plan: BusinessPlan) {
   if (tool.requiredPlan === 'pro' && plan === 'free') {
-    throw new BusinessValidationError(`${tool.name} requires a Pro plan. Your work is preserved.`, 403, 'PREMIUM_BUSINESS_TOOL');
+    throw new BusinessValidationError(`${tool.name} requires Business Pro. Your work is preserved.`, 403, 'PREMIUM_BUSINESS_TOOL');
   }
 }
 

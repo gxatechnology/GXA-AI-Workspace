@@ -1,6 +1,7 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -8,6 +9,7 @@ import crypto from 'crypto';
 import { buildParaphrasePrompt, countWords, FREE_PARAPHRASE_MODES, missingFrozenTerms, validateParaphraseOutput, validateParaphraseRequest } from './server/paraphrase.js';
 import { buildGrammarPrompt, calculateWritingScores, countGrammarWords, CORE_GRAMMAR_CATEGORIES, normalizeGrammarIssues, parseGrammarProviderOutput, validateGrammarRequest } from './server/grammar.js';
 import { buildWriterPrompt, countWriterWords, normalizeWriterOutput, normalizeWriterPlan, validateWriterRequest, WriterValidationError } from './server/writer.js';
+import { findWriterTemplate } from './shared/writerRegistry.js';
 import { buildChatPrompt, CHAT_SYSTEM_INSTRUCTION, ChatAttachment, ChatConversationRecord, ChatMessageRecord, ChatValidationError, makeConversation, titleFromMessage, validateChatAttachments, validateChatMessage } from './server/chat.js';
 import { chunkDocumentPages, decodeDocument, DocumentValidationError, mergePdfs, processDocument, retrievePages, sanitizeFileName, transformPdf } from './server/document.js';
 import { analyzeDetection, buildHumanizerPrompt, internalSimilarity, OriginalityValidationError, validateHumanizerOutput, validateHumanizerRequest } from './server/originality.js';
@@ -32,7 +34,7 @@ import {
 } from './server/platform.js';
 import {
   applyRazorpayWebhook, associatePlanSelection, billingCheckoutAvailable, billingPersistenceReady, BillingError, createCheckout, createContactSalesLead,
-  createPlanSelection, currentPlanSummary, publicPlans, publicSelection, razorpayConfigured,
+  createPlanSelection, currentPlanSummary, pricingComparison, publicPlans, publicSelection, razorpayConfigured,
   recordBillingEvent, resolveFeatureGate, resolvePlanSelection, verifyCheckoutPayment, verifyWebhookSignature,
 } from './server/billing.js';
 import { ADMIN_ROLES, API_SCOPES, AUTOMATION_ACTIONS, AUTOMATION_TRIGGERS, FEATURE_PLAN_REQUIREMENTS, INTEGRATION_REGISTRY, ORGANIZATION_ROLES, PLAN_REGISTRY, WEBHOOK_EVENTS, normalizePlanId, planIncludesFeature } from './shared/platformRegistry.js';
@@ -44,14 +46,22 @@ import { ApplicationPersistence } from './server/persistence/index.js';
 import { changeAccountPassword, findUserByEmail, issueEmailVerification, issuePasswordReset, readAccountWorkspaceState, registerAccount, resetPassword, updateAccountProfile, verifyAccountEmail, writeAccountWorkspaceState } from './server/account.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from './server/authEmail.js';
 
-dotenv.config();
+const environmentFile = {} as Record<string, string>;
+const localEnvironmentFile = {} as Record<string, string>;
+dotenv.config({ processEnv: environmentFile, quiet: true });
+dotenv.config({ path: '.env.local', processEnv: localEnvironmentFile, quiet: true });
+for (const [key, value] of Object.entries({ ...environmentFile, ...localEnvironmentFile })) {
+  if (process.env[key] === undefined && key !== 'VERCEL' && !key.startsWith('VERCEL_')) process.env[key] = value;
+}
 
 const aiEnvironment = validateAIEnvironment(process.env, { requireCredentials: false });
 const aiService = new AIService(aiEnvironment);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DB_FILE = process.env.GXA_DB_FILE ? path.resolve(process.env.GXA_DB_FILE) : path.join(__dirname, 'db.json');
+const DB_FILE = process.env.GXA_DB_FILE
+  ? path.resolve(process.env.GXA_DB_FILE)
+  : path.join(os.tmpdir(), 'gxa-ai-workspace', 'db.json');
 const persistence = new ApplicationPersistence(process.env, DB_FILE);
 await persistence.initialize();
 
@@ -306,7 +316,7 @@ app.post('/api/usage/increment', (req, res) => {
 
 // Centralized pricing and platform APIs. Plan selection is server-owned and amount-free.
 const pricingPlansResponse = () => ({
-  currency: 'INR', plans: publicPlans(), provider: billingCheckoutAvailable() ? 'razorpay' : null,
+  currency: 'INR', plans: publicPlans(), comparison: pricingComparison(), provider: billingCheckoutAvailable() ? 'razorpay' : null,
   checkoutAvailability: {
     available: billingCheckoutAvailable(),
     reason: !razorpayConfigured() ? 'payment_provider_not_configured' : !billingPersistenceReady() ? 'durable_billing_storage_required' : null,
@@ -550,7 +560,18 @@ app.post('/api/grammar/check', async (req, res) => {
 app.post('/api/writer/generate', async (req, res) => {
   const userId = getUserId(req) || 'guest';
   const db = readDb();
-  const userPlan = normalizeWriterPlan(optionalContext(req, db)?.planId || 'free');
+  const platformPlan = optionalContext(req, db)?.planId || 'free';
+  const requestedTemplate = findWriterTemplate(String(req.body?.templateId || ''));
+  if (requestedTemplate && requestedTemplate.requiredPlan !== 'free' && !planIncludesFeature(platformPlan, 'writer.premium_templates')) {
+    return res.status(403).json({
+      error: `${requestedTemplate.name} requires Business Pro. Your writing inputs are unchanged.`,
+      code: 'PREMIUM_TEMPLATE',
+      field: 'templateId',
+      featureKey: 'writer.premium_templates',
+      minimumPlanKey: 'business-pro',
+    });
+  }
+  const userPlan = normalizeWriterPlan(platformPlan);
   let request;
   try {
     request = validateWriterRequest(req.body, userPlan);
@@ -1249,6 +1270,21 @@ app.delete('/api/translation/glossary/:id', (req, res) => { try { const db = rea
 app.get('/api/translation/memory', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.json({ entries: (db.translationMemory[tenantStoreKey(context)] || []).map(({ sourceText, targetText, ...entry }: any) => entry) }); } catch (error) { safeError(res, error); } });
 app.get('/api/translation/saved', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.json({ translations: (db.translations[tenantStoreKey(context)] || []).map(({ sourceText, targetText, ...item }: any) => item) }); } catch (error) { safeError(res, error); } });
 app.post('/api/translation/saved', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const key = tenantStoreKey(context); const projectId = typeof req.body.projectId === 'string' ? req.body.projectId : null; if (projectId && !(db.projects[key] || []).some((project: any) => project.id === projectId)) return res.status(403).json({ error: 'Project is not available in this workspace.' }); const request = validateTranslationRequest(req.body, Number(db.config.translation_character_limit || 20000)); const targetText = String(req.body.targetText || '').trim(); if (!targetText) return res.status(400).json({ error: 'Translated content is required.' }); const item = { id: crypto.randomUUID(), ownerId: context.user.id, tenantType: context.tenantType, tenantId: context.tenantId, title: String(req.body.title || 'Translation').slice(0, 100), sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, mode: request.mode, sourceText: request.text, targetText, projectId, createdAt: new Date().toISOString() }; db.translations[key] ||= []; db.translations[key].unshift(item); db.translationMemory[key] ||= []; db.translationMemory[key].unshift({ id: item.id, ownerId: context.user.id, tenantType: context.tenantType, tenantId: context.tenantId, sourceLanguage: item.sourceLanguage, targetLanguage: item.targetLanguage, projectId, approvedAt: item.createdAt, sourceText: item.sourceText, targetText: item.targetText }); writeDb(db); res.status(201).json({ translation: { ...item, sourceText: undefined, targetText: undefined } }); } catch (error) { safeError(res, error); } });
+
+const requireStudioEntitlement = (featureKey: 'business.basic' | 'career.basic', studioName: string) => (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const context = optionalContext(req, readDb());
+    const planId = context?.planId || 'free';
+    const gate = resolveFeatureGate(featureKey, planId);
+    if (!gate.allowed) {
+      return res.status(403).json({ error: `${studioName} requires Business Pro. Your work is preserved.`, code: 'ENTITLEMENT_REQUIRED', featureKey, minimumPlanKey: gate.minimumRequiredPlanKey });
+    }
+    next();
+  } catch (error) { safeError(res, error); }
+};
+
+app.use('/api/career', requireStudioEntitlement('career.basic', 'Career Studio'));
+app.use('/api/business', requireStudioEntitlement('business.basic', 'Business Studio'));
 
 app.get('/api/career/config', (_req, res) => { const config = readDb().config; res.json({ tools: CAREER_TOOLS, templates: config.career_templates || RESUME_TEMPLATES, aiDailyLimit: config.career_daily_ai_limit, resumeLimit: config.career_resume_limit, importSizeMb: config.career_import_size_mb, supportedImports: ['application/pdf', 'text/plain', 'text/markdown'] }); });
 app.get('/api/career/profile', (req, res) => { const userId = getUserId(req); if (!userId) return res.status(401).json({ error: 'Sign in to access your Career Profile.' }); res.json({ profile: readDb().careerProfiles[userId] || emptyCareerProfile(userId) }); });

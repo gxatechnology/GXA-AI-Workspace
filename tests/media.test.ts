@@ -20,6 +20,7 @@ test('media registry has unique IDs and covers every requested studio section', 
 
 test('plan normalization and entitlements are backend-controlled', () => {
   assert.equal(normalizeMediaPlan('Enterprise'), 'pro_plus');
+  assert.equal(normalizeMediaPlan('Business Pro'), 'pro_plus');
   assert.equal(normalizeMediaPlan('Pro'), 'pro');
   assert.equal(normalizeMediaPlan(undefined), 'free');
   const free = MEDIA_TOOLS.find((tool) => tool.id === 'image-generator')!;

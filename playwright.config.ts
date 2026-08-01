@@ -28,6 +28,7 @@ export default defineConfig({
     env: {
       PORT: String(port),
       GXA_DB_FILE: './db.e2e.json',
+      PERSISTENCE_PROVIDER: 'json',
       NODE_ENV: 'test',
     },
   },

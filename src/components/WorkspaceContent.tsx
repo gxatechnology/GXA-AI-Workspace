@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { WorkspaceId } from '../types';
 import { PublicPlan, UpgradeRequest } from '../types/pricing';
+import { canonicalPlanKey } from '../utils/pricing';
+import StudioPlanGate from './pricing/StudioPlanGate';
 import UniversalHome from './workspaces/UniversalHome';
 
 const Dashboard = lazy(() => import('./workspaces/UserDashboard'));
@@ -40,6 +42,7 @@ interface Props { activeWorkspace: WorkspaceId; onSelectWorkspace: (id: Workspac
 export default function WorkspaceContent(props: Props) {
   const { activeWorkspace, onSelectWorkspace, onOpenUpgradeModal, onPlanSelected, onOpenTools, onRequireAuth, sharedText, setSharedText, currentUser, isAuthenticated } = props;
   const upgrade = (featureKey: string, featureName: string, sourceTool = activeWorkspace) => () => onOpenUpgradeModal({ featureKey, featureName, sourceTool, returnRoute: activeWorkspace });
+  const hasBusinessPro = ['business-pro', 'team', 'enterprise'].includes(canonicalPlanKey(currentUser?.subscription) || '');
   let content: React.ReactNode;
   switch (activeWorkspace) {
     case 'home': content = <UniversalHome sharedText={sharedText} setSharedText={setSharedText} onSelectWorkspace={onSelectWorkspace} onOpenTools={onOpenTools} isAuthenticated={isAuthenticated} />; break;
@@ -53,8 +56,8 @@ export default function WorkspaceContent(props: Props) {
     case 'ai-humanizer': content = <AIHumanizer initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('humanizer.standard', 'AI Humanizer', 'ai-humanizer')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
     case 'ai-chat': content = <AIChat currentUser={currentUser} onOpenUpgradeModal={upgrade('chat.premium_models', 'premium chat capabilities', 'ai-chat')} onSelectWorkspace={onSelectWorkspace} initialText={sharedText} />; break;
     case 'translation': content = <Translation initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('exports.advanced', 'advanced translation exports', 'translation')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'career': content = <CareerStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('career.basic', 'saved career documents', 'career')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
-    case 'business': content = <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('business.premium', 'premium business tools', 'business')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;
+    case 'career': content = hasBusinessPro ? <CareerStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('career.basic', 'Career Studio', 'career')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} /> : <StudioPlanGate studio="Career Studio" description="Build and manage verified resumes, applications and professional career content in one complete workspace." benefits={['Resume Builder and Resume Import', 'ATS Guidance and Interview Preparation', 'Career Profile, LinkedIn and Cover Letters', 'Career Library and saved versions']} onUpgrade={upgrade('career.basic', 'Career Studio', 'career')} />; break;
+    case 'business': content = hasBusinessPro ? <BusinessStudio initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('business.premium', 'Business Studio', 'business')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} /> : <StudioPlanGate studio="Business Studio" description="Create professional business, marketing, sales, commerce, report and operations content from verified information." benefits={['All registered Business Studio categories', 'Email, marketing and social workflows', 'Proposals, reports and operations tools', 'Planning, campaign and commerce workflows']} onUpgrade={upgrade('business.basic', 'Business Studio', 'business')} />; break;
     case 'summarizer': content = <Summarizer initialText={sharedText} />; break;
     case 'pdf-intelligence': content = <PDFIntelligence currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'pdf-intelligence')} />; break;
     case 'ocr': content = <OCR initialText={sharedText} currentUser={currentUser} onOpenUpgradeModal={upgrade('documents.intelligence', 'document intelligence', 'ocr')} onSelectWorkspace={onSelectWorkspace} setSharedText={setSharedText} />; break;

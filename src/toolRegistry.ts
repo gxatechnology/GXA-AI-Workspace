@@ -23,7 +23,7 @@ export interface ToolDefinition {
   category: ToolCategory;
   description: string;
   guestAccess: boolean;
-  planAccess: 'Free' | 'Starter' | 'Pro' | 'Account' | 'Admin';
+  planAccess: 'Free' | 'Starter' | 'Pro' | 'Business Pro' | 'Account' | 'Admin';
   status: 'available' | 'beta';
   keywords: string[];
   primary: boolean;
@@ -33,8 +33,8 @@ export interface ToolDefinition {
 
 export const toolRegistry: ToolDefinition[] = [
   { id: 'profile', name: 'My Profile', route: 'profile', icon: 'user', category: 'Account and Administration', description: 'Manage your personal account details.', guestAccess: false, planAccess: 'Account', status: 'available', keywords: ['profile', 'account', 'avatar'], primary: false, more: false },
-  { id: 'business', name: 'Business Studio', route: 'business', icon: 'briefcase', category: 'Business and Marketing', description: 'Create email, campaign, social, proposal and report assets.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['email', 'marketing', 'campaign', 'proposal', 'social', 'brand'], primary: false, more: true, isNew: true },
-  { id: 'career', name: 'Career Studio', route: 'career', icon: 'briefcase', category: 'Career and Professional', description: 'Build resumes, review ATS guidance and prepare for interviews.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['resume', 'career', 'ats', 'cover letter', 'interview'], primary: false, more: true, isNew: true },
+  { id: 'business', name: 'Business Studio', route: 'business', icon: 'briefcase', category: 'Business and Marketing', description: 'Create email, campaign, social, proposal and report assets.', guestAccess: true, planAccess: 'Business Pro', status: 'available', keywords: ['email', 'marketing', 'campaign', 'proposal', 'social', 'brand'], primary: false, more: true, isNew: true },
+  { id: 'career', name: 'Career Studio', route: 'career', icon: 'briefcase', category: 'Career and Professional', description: 'Build resumes, review ATS guidance and prepare for interviews.', guestAccess: true, planAccess: 'Business Pro', status: 'available', keywords: ['resume', 'career', 'ats', 'cover letter', 'interview'], primary: false, more: true, isNew: true },
   { id: 'paraphraser', name: 'Paraphraser', route: 'paraphrasing', icon: 'repeat', category: 'Writing and Rewriting', description: 'Rewrite text while preserving its meaning.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['rewrite', 'rephrase', 'fluency'], primary: true, more: true },
   { id: 'grammar', name: 'Grammar Checker', route: 'grammar', icon: 'check', category: 'Originality and Writing Quality', description: 'Improve grammar, spelling, clarity and structure.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['spelling', 'punctuation', 'proofread'], primary: true, more: true },
   { id: 'chat', name: 'AI Chat', route: 'ai-chat', icon: 'chat', category: 'AI Chat and Research', description: 'Ask questions and work with an AI assistant.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['assistant', 'research', 'conversation'], primary: true, more: true },
@@ -63,7 +63,7 @@ export const toolRegistry: ToolDefinition[] = [
   { id: 'dashboard', name: 'My Workspace', route: 'dashboard', icon: 'dashboard', category: 'Account and Administration', description: 'View your plan and recent saved work.', guestAccess: false, planAccess: 'Account', status: 'available', keywords: ['dashboard', 'account', 'workspace'], primary: false, more: true },
   { id: 'settings', name: 'Settings', route: 'settings', icon: 'settings', category: 'Account and Administration', description: 'Manage workspace preferences.', guestAccess: false, planAccess: 'Account', status: 'available', keywords: ['settings', 'preferences', 'account'], primary: false, more: true },
   { id: 'billing', name: 'Billing', route: 'billing', icon: 'card', category: 'Account and Administration', description: 'Manage subscription and billing details.', guestAccess: false, planAccess: 'Account', status: 'available', keywords: ['billing', 'subscription', 'invoice'], primary: false, more: true },
-  { id: 'pricing', name: 'Pricing', route: 'pricing', icon: 'card', category: 'Account and Administration', description: 'Compare Free, Starter and Pro access.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['pricing', 'plans', 'upgrade'], primary: false, more: true },
+  { id: 'pricing', name: 'Pricing', route: 'pricing', icon: 'card', category: 'Account and Administration', description: 'Compare Free, Starter, Pro and Business Pro access.', guestAccess: true, planAccess: 'Free', status: 'available', keywords: ['pricing', 'plans', 'upgrade'], primary: false, more: true },
   { id: 'administration', name: 'Administration', route: 'administration', icon: 'shield', category: 'Account and Administration', description: 'Protected workspace configuration.', guestAccess: false, planAccess: 'Admin', status: 'available', keywords: ['admin', 'configuration', 'limits'], primary: false, more: false },
 ];
 

@@ -33,7 +33,7 @@ export const countWriterWords = (value: string) => value.trim() ? value.trim().s
 
 export function normalizeWriterPlan(value: unknown): WriterPlan {
   const plan = resolvePlanKey(value) || 'free';
-  if (plan === 'pro_plus' || plan === 'team' || plan === 'enterprise') return 'pro_plus';
+  if (plan === 'pro_plus' || plan === 'business-pro' || plan === 'team' || plan === 'enterprise') return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }

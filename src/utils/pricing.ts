@@ -24,7 +24,7 @@ export const canonicalPlanKey = (value: unknown): PlanKey | null => {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw || /^\d+(?:\.\d+)?$/.test(raw)) return null;
   const normalized = raw.replace(/[ -]+/g, '_');
-  const aliases: Record<string, PlanKey> = { free: 'free', pro: 'pro', pro_monthly: 'pro', premium: 'pro', pro_plus: 'pro_plus', proplus: 'pro_plus', premium_plus: 'pro_plus', team: 'team', enterprise: 'enterprise' };
+  const aliases: Record<string, PlanKey> = { free: 'free', pro: 'pro', pro_monthly: 'pro', premium: 'pro', pro_plus: 'pro_plus', proplus: 'pro_plus', premium_plus: 'pro_plus', business_pro: 'business-pro', businesspro: 'business-pro', team: 'team', enterprise: 'enterprise' };
   return aliases[normalized] || null;
 };
 

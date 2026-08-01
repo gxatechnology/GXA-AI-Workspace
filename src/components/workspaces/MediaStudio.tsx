@@ -124,7 +124,7 @@ export default function MediaStudio({
   const fileInput = useRef<HTMLInputElement>(null);
   const [config, setConfig] = useState<MediaConfig>(() => ({
     ...fallbackConfig,
-    currentPlan: ['pro_plus', 'team', 'enterprise'].includes(canonicalPlanKey(currentUser?.subscription) || '')
+    currentPlan: ['pro_plus', 'business-pro', 'team', 'enterprise'].includes(canonicalPlanKey(currentUser?.subscription) || '')
       ? 'pro_plus' : canonicalPlanKey(currentUser?.subscription) === 'pro' ? 'pro' : 'free',
   }));
   const [tab, setTab] = useState<StudioTab>(initialSection);

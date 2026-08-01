@@ -26,7 +26,7 @@ const PLAN_RANK: Record<MediaPlan, number> = { free: 0, pro: 1, pro_plus: 2 };
 
 export function normalizeMediaPlan(value: unknown): MediaPlan {
   const plan = resolvePlanKey(value) || 'free';
-  if (['pro_plus', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
+  if (['pro_plus', 'business-pro', 'team', 'enterprise'].includes(plan)) return 'pro_plus';
   if (plan === 'pro') return 'pro';
   return 'free';
 }

@@ -17,25 +17,28 @@ export function PlanFeatureList({ features, limit = 8 }: { features: string[]; l
   return <ul className="mt-5 flex-1 space-y-2 text-xs text-slate-600 dark:text-zinc-300">{features.slice(0, limit).map(feature => <li key={feature} className="flex gap-2"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-600" /><span>{feature}</span></li>)}</ul>;
 }
 
-export function PlanCard({ plan, currentPlanKey, disabled = false, badge, onSelect }: { plan: PublicPlan; currentPlanKey?: PlanKey | null; disabled?: boolean; badge?: string; onSelect: (plan: PublicPlan) => void | Promise<void> }) {
+export function PlanCard({ plan, currentPlanKey, currentPlanRank, authenticated = false, disabled = false, badge, onSelect }: { plan: PublicPlan; currentPlanKey?: PlanKey | null; currentPlanRank?: number | null; authenticated?: boolean; disabled?: boolean; badge?: string; onSelect: (plan: PublicPlan) => void | Promise<void> }) {
   const current = currentPlanKey === plan.key;
-  const label = current ? 'Current Plan' : plan.contactSales ? 'Contact Sales' : plan.billingType === 'free' ? 'Continue with Free' : `Upgrade to ${plan.name}`;
-  const cardBadge = badge || (plan.recommended ? 'Recommended' : '');
+  const includedInCurrentPlan = authenticated && currentPlanRank !== null && currentPlanRank !== undefined && plan.rank < currentPlanRank;
+  const label = current ? 'Current Plan' : includedInCurrentPlan ? 'Included in your plan' : plan.contactSales ? 'Contact Sales' : !authenticated ? plan.billingType === 'free' ? 'Start Free' : `Choose ${plan.name}` : plan.billingType === 'free' ? 'Start Free' : `Upgrade to ${plan.name}`;
+  const cardBadge = badge || (plan.key === 'business-pro' ? 'Everything Included' : plan.recommended ? 'Recommended' : '');
   return <article className={`relative flex min-w-0 flex-col rounded-3xl border bg-white p-5 dark:bg-zinc-900 ${cardBadge ? 'border-teal-500 shadow-lg shadow-teal-500/10' : 'border-slate-200 dark:border-zinc-800'}`}>
     <div className="flex min-h-7 items-start justify-between gap-2"><h2 className="text-lg font-black">{plan.name}</h2>{current ? <CurrentPlanBadge /> : cardBadge ? <span className="rounded-full bg-teal-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-teal-700 dark:bg-teal-950 dark:text-teal-300">{cardBadge}</span> : null}</div>
     <PlanPrice plan={plan} />
     <p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{plan.description}</p>
-    <PlanFeatureList features={plan.features} />
-    <button type="button" disabled={disabled || current} onClick={() => onSelect(plan)} className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-white dark:text-slate-950">{label}{!current && <ArrowRight className="h-4 w-4" />}</button>
+    {plan.key === 'business-pro' && <p className="mt-3 rounded-xl bg-teal-50 px-3 py-2 text-xs font-black text-teal-800 dark:bg-teal-950 dark:text-teal-200">Includes every feature from Free, Starter and Pro.</p>}
+    <PlanFeatureList features={plan.features} limit={plan.key === 'business-pro' ? 9 : 8} />
+    <button type="button" disabled={disabled || current || includedInCurrentPlan} onClick={() => onSelect(plan)} className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-white dark:text-slate-950">{label}{!current && !includedInCurrentPlan && <ArrowRight className="h-4 w-4" />}</button>
   </article>;
 }
 
-export function PricingGrid({ plans, currentPlanKey, onSelect, disabledPlanKeys = [] }: { plans: PublicPlan[]; currentPlanKey?: PlanKey | null; onSelect: (plan: PublicPlan) => void | Promise<void>; disabledPlanKeys?: PlanKey[] }) {
-  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{plans.map(plan => <PlanCard key={plan.key} plan={plan} currentPlanKey={currentPlanKey} disabled={disabledPlanKeys.includes(plan.key)} onSelect={onSelect} />)}</div>;
+export function PricingGrid({ plans, currentPlanKey, authenticated = false, onSelect, disabledPlanKeys = [] }: { plans: PublicPlan[]; currentPlanKey?: PlanKey | null; authenticated?: boolean; onSelect: (plan: PublicPlan) => void | Promise<void>; disabledPlanKeys?: PlanKey[] }) {
+  const currentPlanRank = authenticated ? plans.find(plan => plan.key === currentPlanKey)?.rank ?? null : null;
+  return <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">{plans.map(plan => <PlanCard key={plan.key} plan={plan} currentPlanKey={authenticated ? currentPlanKey : null} currentPlanRank={currentPlanRank} authenticated={authenticated} disabled={disabledPlanKeys.includes(plan.key)} onSelect={onSelect} />)}</div>;
 }
 
 export function PricingSkeleton() {
-  return <div aria-label="Loading plans" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <div key={index} className="h-80 animate-pulse rounded-3xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><div className="h-5 w-24 rounded bg-slate-200 dark:bg-zinc-800" /><div className="mt-4 h-8 w-32 rounded bg-slate-100 dark:bg-zinc-800" /><div className="mt-8 space-y-3">{Array.from({ length: 5 }, (__, row) => <div key={row} className="h-3 rounded bg-slate-100 dark:bg-zinc-800" />)}</div></div>)}</div>;
+  return <div aria-label="Loading plans" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-80 animate-pulse rounded-3xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"><div className="h-5 w-24 rounded bg-slate-200 dark:bg-zinc-800" /><div className="mt-4 h-8 w-32 rounded bg-slate-100 dark:bg-zinc-800" /><div className="mt-8 space-y-3">{Array.from({ length: 5 }, (__, row) => <div key={row} className="h-3 rounded bg-slate-100 dark:bg-zinc-800" />)}</div></div>)}</div>;
 }
 
 export function PricingErrorState({ message, onRetry, retrying = false }: { message: string; onRetry: () => void; retrying?: boolean }) {

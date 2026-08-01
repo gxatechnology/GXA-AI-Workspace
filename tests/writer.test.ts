@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { WRITER_CATEGORIES, WRITER_TEMPLATES, findWriterTemplate } from '../shared/writerRegistry.js';
-import { buildWriterPrompt, canUseWriterTemplate, normalizeWriterOutput, validateWriterRequest, WriterValidationError } from '../server/writer.js';
+import { buildWriterPrompt, canUseWriterTemplate, normalizeWriterOutput, normalizeWriterPlan, validateWriterRequest, WriterValidationError } from '../server/writer.js';
 
 const legacyIds = [
   'ai-writer', 'blog-writer', 'article-writer', 'essay-writer', 'story-writer', 'book-writer', 'newsletter', 'speech', 'script',
@@ -16,6 +16,10 @@ const validRequest = {
   fields: { topic: 'Practical local-first architecture', audienceDetails: 'Software teams', goal: 'Explain the verified architecture clearly', keywords: 'local-first, sync', keyPoints: 'Use supplied architecture notes', sourceNotes: 'Internal benchmark supplied by user', callToAction: 'Review the architecture' },
   tone: 'professional', language: 'English', length: 'medium', audience: 'technical readers', purpose: 'inform', keywords: ['local-first'], customInstructions: '', existingContent: '', selectedText: '', mode: 'generate',
 };
+
+test('Business Pro retains the highest supported Writer capabilities', () => {
+  assert.equal(normalizeWriterPlan('business-pro'), 'pro_plus');
+});
 
 test('central registry preserves every legacy writer template ID', () => {
   assert.equal(legacyIds.length, 40);

@@ -122,7 +122,7 @@ test('locked templates enter the centralized upgrade flow without losing work', 
   await page.getByRole('button', { name: 'pro', exact: true }).click();
   await page.getByPlaceholder('Search templates').fill('Google Ads Copy');
   await page.getByRole('button', { name: 'Preview' }).click();
-  await page.getByRole('button', { name: 'Compare plans for Starter' }).click();
+  await page.getByRole('button', { name: 'Compare plans for Business Pro' }).click();
   await expect(page.getByRole('dialog')).toContainText(/upgrade|plan/i);
   await page.keyboard.press('Escape');
   await expect(page.getByLabel('Writing instructions')).toHaveValue('Preserve this draft');
@@ -145,6 +145,7 @@ test('authenticated prompt saving and project assignment use real workspace stat
   await page.getByLabel('Prompt title').fill('Verified voice rules');
   await page.getByLabel('Reusable instructions').fill('Use concise sentences and preserve supplied numbers.');
   await page.getByRole('button', { name: 'Save prompt' }).click();
+  await expect(page.getByRole('dialog', { name: 'Prompt Library' })).toBeHidden();
   await page.getByRole('button', { name: 'Prompt Library', exact: true }).click();
   await expect(page.getByText('Verified voice rules')).toBeVisible();
   await page.getByRole('button', { name: 'Use in this draft' }).click();
