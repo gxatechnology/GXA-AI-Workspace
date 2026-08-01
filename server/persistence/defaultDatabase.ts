@@ -67,6 +67,7 @@ export function emptyApplicationDatabase() {
     glossaries: {}, translationMemory: {}, translationJobs: {}, careerProfiles: {},
     resumes: {}, careerDocuments: {}, brandKits: {}, businessAssets: {}, mediaAssets: {},
     passwordResetTokens: {}, emailVerificationTokens: {}, savedPrompts: {}, userWorkspaceStates: {},
+    subscriptions: {}, subscriptionEvents: {}, subscriptionPayments: {}, pendingCheckouts: {}, processedPayments: {},
     aiProviderRequests: [], config: defaultApplicationConfig(), usage: {},
   };
 }
@@ -80,7 +81,7 @@ export function normalizeApplicationDatabase(input: unknown) {
     feature_locks: { ...defaults.feature_locks, ...(source.config?.feature_locks || {}) },
   };
   source.usage ||= {};
-  for (const store of ['users', 'projects', 'documents', 'chats', 'analyses', 'translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets', 'passwordResetTokens', 'emailVerificationTokens', 'savedPrompts', 'userWorkspaceStates']) source[store] ||= {};
+  for (const store of ['users', 'projects', 'documents', 'chats', 'analyses', 'translations', 'glossaries', 'translationMemory', 'translationJobs', 'careerProfiles', 'resumes', 'careerDocuments', 'brandKits', 'businessAssets', 'mediaAssets', 'passwordResetTokens', 'emailVerificationTokens', 'savedPrompts', 'userWorkspaceStates', 'subscriptions', 'subscriptionEvents', 'subscriptionPayments', 'pendingCheckouts', 'processedPayments']) source[store] ||= {};
   if (!Array.isArray(source.aiProviderRequests)) source.aiProviderRequests = [];
   return applyPlatformMigration(source).db;
 }

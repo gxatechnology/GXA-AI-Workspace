@@ -25,7 +25,9 @@
     "db:migrate": "tsx scripts/postgres-migration.ts apply",
     "db:migrate:json:dry-run": "tsx scripts/postgres-migration.ts import-json-dry-run",
     "db:migrate:json": "tsx scripts/postgres-migration.ts import-json",
-    "security:check": "npm audit --omit=dev"
+    "security:check": "npm audit --omit=dev",
+    "billing:reconcile-subscriptions": "tsx scripts/billing-reconcile-subscriptions.ts",
+    "admin:promote": "tsx scripts/admin-promote.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import type express from 'express';
 import { resolvePersistenceConfig, type PersistenceConfig } from './config.js';
 import { JsonDatabaseAdapter } from './json.js';
+import { MemoryDatabaseAdapter } from './memory.js';
 import { PostgresDatabaseAdapter, PersistenceConflictError, PersistenceUnavailableError, type DatabaseAdapter, type DatabaseSnapshot } from './postgres.js';
 
 interface RequestDatabaseScope {
@@ -15,17 +16,43 @@ type EndArguments = any[];
 
 export class ApplicationPersistence {
   readonly config: PersistenceConfig;
-  readonly adapter: DatabaseAdapter;
+  private adapter: DatabaseAdapter;
   private readonly storage = new AsyncLocalStorage<RequestDatabaseScope>();
 
   constructor(env: NodeJS.ProcessEnv, jsonFile: string, adapter?: DatabaseAdapter) {
     this.config = resolvePersistenceConfig(env, jsonFile);
-    this.adapter = adapter || (this.config.provider === 'postgres' ? new PostgresDatabaseAdapter(this.config) : new JsonDatabaseAdapter(this.config.jsonFile));
+    this.adapter = adapter || (this.config.provider === 'postgres'
+      ? new PostgresDatabaseAdapter(this.config)
+      : this.config.provider === 'json'
+        ? new JsonDatabaseAdapter(this.config.jsonFile)
+        : new MemoryDatabaseAdapter());
   }
 
   get provider() { return this.adapter.provider; }
+  get postgresPool() { return this.adapter instanceof PostgresDatabaseAdapter ? this.adapter.pool : null; }
 
-  async initialize() { await this.adapter.initialize(); }
+  async initialize() {
+    if (this.config.fallbackReason === 'missing_database_url') {
+      console.warn(JSON.stringify({ event: 'persistence.database_url_missing', message: 'Missing DATABASE_URL' }));
+      console.warn(JSON.stringify({ event: 'persistence.fallback', message: 'Falling back to Memory', reason: this.config.fallbackReason }));
+    }
+    try {
+      await this.adapter.initialize();
+      if (this.adapter.provider === 'postgres') console.info(JSON.stringify({ event: 'persistence.postgres_connected', message: 'Postgres connected' }));
+    } catch (error) {
+      const failedProvider = this.adapter.provider;
+      console.warn(JSON.stringify({
+        event: 'persistence.initialization_failed',
+        provider: failedProvider,
+        code: error instanceof PersistenceUnavailableError ? error.code : 'PERSISTENCE_INITIALIZATION_FAILED',
+      }));
+      try { await this.adapter.close(); } catch {}
+      this.adapter = new MemoryDatabaseAdapter();
+      await this.adapter.initialize();
+      console.warn(JSON.stringify({ event: 'persistence.fallback', message: 'Falling back to Memory', reason: `${failedProvider}_unavailable` }));
+    }
+    console.info(JSON.stringify({ event: 'persistence.active', message: 'Persistence mode currently active', provider: this.adapter.provider }));
+  }
 
   read() {
     const scope = this.storage.getStore();
@@ -62,6 +89,7 @@ export class ApplicationPersistence {
   middleware(): express.RequestHandler {
     return async (request, response, next) => {
       if (!request.path.startsWith('/api')) return next();
+      if (request.method === 'GET' && ['/api/pricing/plans', '/api/platform/plans'].includes(request.path)) return next();
       let snapshot: DatabaseSnapshot;
       try { snapshot = await this.adapter.load(); }
       catch (error) { return this.sendPersistenceError(response, error); }
