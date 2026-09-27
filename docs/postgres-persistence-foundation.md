@@ -47,7 +47,9 @@ Do not drop PostgreSQL tables. Stop writes, retain the PostgreSQL backup, restor
 
 ## Remaining infrastructure work
 
-- Rate-limit and active-request counters are still process-local and need a distributed implementation.
+- Authentication and administrative mutation rate limits use atomic PostgreSQL buckets. Expired buckets are removed opportunistically every 128 consumes, after a one-hour safety margin. Operational rollback may drop `gxa_rate_limit_buckets` only after rolling application code back; it contains counters rather than account data.
+- The `gxa_session` cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` in production. Sessions have a 30-day absolute lifetime and a seven-day inactivity lifetime. Login and password changes rotate the session token, while password reset revokes existing sessions.
+- Production browser mutations require a trusted `APP_ORIGIN` and matching `Origin` (or `Referer` fallback). Signed Razorpay webhooks and Bearer-authenticated `/api/v1` routes are exempt from browser CSRF checks.
 - Background jobs remain in-process and need a durable worker/queue.
 - The versioned JSONB stores should be normalized into tenant/resource tables as scale and query requirements grow.
 - The live Supabase migration and preservation smoke test must run in the controlled deployment environment because database credentials are not stored in this repository.

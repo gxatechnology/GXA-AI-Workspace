@@ -137,10 +137,16 @@ export function verifyAccountEmail(db: any, rawToken: string) {
   return user;
 }
 
+export function requireVerifiedEmail(user: any) {
+  if (!user?.emailVerifiedAt) throw new PlatformError('Verify your email address before continuing.', 403, 'EMAIL_VERIFICATION_REQUIRED');
+  return user;
+}
+
 export function changeAccountPassword(db: any, user: any, currentPassword: string, nextPassword: string, currentSessionId: string) {
   if (!verifyPassword(currentPassword, String(user.password || ''))) throw new PlatformError('Current password is incorrect.', 401, 'CURRENT_PASSWORD_INCORRECT');
   user.password = hashPassword(nextPassword);
   user.updatedAt = nowIso();
-  for (const session of Object.values<any>(db.sessions || {}).filter(item => item.userId === user.id && item.id !== currentSessionId)) session.revokedAt = nowIso();
-  securityEvent(db, { actorId: user.id, type: 'account.password_changed', outcome: 'success' });
+  let revoked = 0;
+  for (const session of Object.values<any>(db.sessions || {}).filter(item => item.userId === user.id && !item.revokedAt)) { session.revokedAt = nowIso(); revoked += 1; }
+  securityEvent(db, { actorId: user.id, type: 'account.password_changed', outcome: 'success', metadata: { currentSessionRotated: Boolean(currentSessionId), revokedSessions: revoked } });
 }

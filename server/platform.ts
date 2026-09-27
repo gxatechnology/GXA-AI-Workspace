@@ -7,6 +7,10 @@ import {
   PlatformPermission, PlanId, TenantType, WEBHOOK_EVENTS, normalizePlanId, resolvePlanKey,
 } from '../shared/platformRegistry.js';
 
+export const APPLICATION_SCHEMA_VERSION = 16;
+export const SESSION_ABSOLUTE_LIFETIME_MS = 30 * 24 * 60 * 60_000;
+export const SESSION_INACTIVITY_LIFETIME_MS = 7 * 24 * 60 * 60_000;
+
 export class PlatformError extends Error {
   constructor(message: string, public status = 400, public code = 'PLATFORM_ERROR') { super(message); }
 }
@@ -106,13 +110,19 @@ export function applyPlatformMigration(input: any, options: { dryRun?: boolean }
   }
   for (const flag of DEFAULT_FEATURE_FLAGS) if (!db.featureFlags[flag.key]) db.featureFlags[flag.key] = { ...flag, target: 'global', createdAt: nowIso(), updatedAt: nowIso() };
   const previousVersion = Number(db.schemaVersion || 0);
-  if (previousVersion < 16) { db.schemaVersion = 16; changes.push(`schema:${previousVersion}->16`); }
-  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: 16 };
+  if (previousVersion < APPLICATION_SCHEMA_VERSION) { db.schemaVersion = APPLICATION_SCHEMA_VERSION; changes.push(`schema:${previousVersion}->${APPLICATION_SCHEMA_VERSION}`); }
+  return { db, changed: changes.length > 0, changes, fromVersion: previousVersion, toVersion: APPLICATION_SCHEMA_VERSION };
+}
+
+export function platformMigrationMetadata(db: any) {
+  const dryRun = applyPlatformMigration(db, { dryRun: true });
+  return { currentVersion: Number(db.schemaVersion || 0), targetVersion: APPLICATION_SCHEMA_VERSION, pendingChanges: dryRun.changes, destructive: false };
 }
 
 export function createSession(db: any, userId: string, meta: { userAgent?: string; ipHash?: string } = {}) {
   const token = randomToken('gxa_sess_');
-  const record = { id: idFor('sess'), tokenHash: hashSecret(token), userId, activeWorkspaceId: ensurePersonalWorkspace(db, userId).id, userAgentSummary: safeText(meta.userAgent, 120), ipHash: safeText(meta.ipHash, 80), createdAt: nowIso(), lastActiveAt: nowIso(), expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(), revokedAt: null };
+  const createdAt = nowIso();
+  const record = { id: idFor('sess'), tokenHash: hashSecret(token), userId, activeWorkspaceId: ensurePersonalWorkspace(db, userId).id, userAgentSummary: safeText(meta.userAgent, 120), ipHash: safeText(meta.ipHash, 80), createdAt, lastActiveAt: createdAt, expiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIFETIME_MS).toISOString(), revokedAt: null };
   db.sessions[record.id] = record;
   audit(db, { tenantId: userId, actorId: userId, action: 'session.created', resourceType: 'session', resourceId: record.id });
   return { token, record };
@@ -127,10 +137,15 @@ export function resolveSession(db: any, token: string) {
   if (!token) return null;
   const tokenHash = hashSecret(token);
   const session = Object.values<any>(db.sessions || {}).find(item => item.tokenHash === tokenHash);
-  if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now()) return null;
+  const lastActiveAt = Date.parse(session?.lastActiveAt || session?.createdAt || '');
+  if (!session || session.revokedAt || Date.parse(session.expiresAt) <= Date.now() || !Number.isFinite(lastActiveAt) || Date.now() - lastActiveAt > SESSION_INACTIVITY_LIFETIME_MS) return null;
   const user = db.users?.[session.userId];
   if (!user || user.status === 'suspended' || user.status === 'deleted') return null;
   return { session, user };
+}
+
+export function legacyPasswordRecordCount(db: any) {
+  return Object.values<any>(db.users || {}).filter(user => typeof user?.password === 'string' && user.password.length > 0 && !user.password.startsWith('scrypt$')).length;
 }
 
 export function publicUser(user: any, token?: string) {

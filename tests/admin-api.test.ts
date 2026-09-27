@@ -10,7 +10,7 @@ delete process.env.DATABASE_URL;
 const { default: app } = await import('../server.js');
 
 test('every Phase 3A admin API rejects an unauthenticated request', async () => {
-  for (const path of ['/api/admin/summary', '/api/admin/signup-trend?range=7d', '/api/admin/users', '/api/admin/users/export.csv', '/api/admin/audit']) {
+  for (const path of ['/api/admin/summary', '/api/admin/signup-trend?range=7d', '/api/admin/users', '/api/admin/users/export.csv', '/api/admin/audit', '/api/admin/security/password-status']) {
     const response = await request(app).get(path).expect(401);
     assert.equal(response.body.code, 'AUTHENTICATION_REQUIRED');
   }
@@ -22,7 +22,7 @@ test('every Phase 3A admin API rejects an unauthenticated request', async () => 
 test('normal users receive 403 and client-supplied role values cannot elevate access', async () => {
   const registration = await request(app).post('/api/auth/register').send({ name: 'Normal User', email: 'normal-admin-api@example.test', password: 'secure-password-123' }).expect(201);
   const cookie = registration.headers['set-cookie']; assert.ok(cookie);
-  for (const path of ['/api/admin/summary', '/api/admin/users', '/api/admin/audit']) {
+  for (const path of ['/api/admin/summary', '/api/admin/users', '/api/admin/audit', '/api/admin/security/password-status']) {
     const response = await request(app).get(path).set('Cookie', cookie).set('X-Role', 'super_admin').query({ role: 'super_admin' }).expect(403);
     assert.equal(response.body.code, 'AUTHORIZATION_DENIED');
   }
