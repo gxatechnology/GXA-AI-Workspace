@@ -25,12 +25,12 @@ import {
   validateGenerateRequest, validateVisionRequest,
 } from './server/media.js';
 import {
-  acceptInvitation, addTeamMember, adminAudit, adminScopes, applyPlatformMigration, audit, authenticateApiKey, AuthenticationError,
+  acceptInvitation, addTeamMember, adminAudit, adminScopes, audit, authenticateApiKey, AuthenticationError,
   bearerToken, completeDataExport, createApiKey, createAutomation, createOrganization,
   createSession, createTeam, createWebhook, executeAutomation, hashPassword, inviteMember,
   listAccessibleWorkspaces, PlatformError, QuotaError, publicUser, publicWebhook, requestDataExport,
   failDataExport, processDataExport, removeTeamMember, requestDeletion, requireAdminRead, requireAdminScope, requireSuperAdmin, resendInvitation, resolveApiKeyContext, resolveSession, resolveTenantContext, rotateApiKey, rotateWebhookSecret,
-  securityEvent, setActiveWorkspace, tenantStoreKey, updateMembership, verifyPassword, reserveUsage, commitUsage, releaseUsage,
+  securityEvent, setActiveWorkspace, tenantStoreKey, updateMembership, verifyPassword, reserveUsage, commitUsage, releaseUsage, legacyPasswordRecordCount, platformMigrationMetadata,
 } from './server/platform.js';
 import {
   activeBillingEnvironment, activeBillingMode, applyRazorpayWebhook, associatePlanSelection, billingCheckoutAvailability, billingCheckoutAvailable, billingPersistenceReady, BillingError,
@@ -48,6 +48,7 @@ import { changeAccountPassword, findUserByEmail, issueEmailVerification, issuePa
 import { authEmailConfigured, sendBillingLifecycleEmail, sendPasswordResetEmail, sendVerificationEmail } from './server/authEmail.js';
 import { parseAdminListQuery, PostgresAdminRepository, reactivateAccount, suspendAccount, usersCsv } from './server/admin.js';
 import { BillingAnalyticsRepository, parsePaymentQuery, parseReportingQuery, parseSubscriptionQuery, paymentsCsv, subscriptionsCsv } from './server/billingAnalytics.js';
+import { browserMutationCsrf, createRateLimiter, securityHeaders, sessionCookie } from './server/security.js';
 
 const environmentFile = {} as Record<string, string>;
 const localEnvironmentFile = {} as Record<string, string>;
@@ -72,34 +73,23 @@ if (!activeBillingMode()) console.warn(JSON.stringify({ event: 'billing.configur
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '24mb', verify: (req, _res, buffer) => { (req as any).rawBody = Buffer.from(buffer); } }));
+app.use(securityHeaders(process.env));
 app.use((req, res, next) => {
   const startedAt = Date.now();
   const requestId = String(req.headers['x-request-id'] || crypto.randomUUID()).slice(0, 100);
   (req as any).requestId = requestId;
   res.setHeader('X-Request-Id', requestId);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  if (req.path.startsWith('/admin')) res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-  const origin = String(req.headers.origin || '');
-  const allowed = String(process.env.APP_ORIGIN || '').split(',').map(item => item.trim()).filter(Boolean);
-  if (origin && allowed.length && !allowed.includes(origin)) return res.status(403).json({ error: 'Origin is not allowed.', code: 'ORIGIN_DENIED', requestId });
-  if (origin && allowed.includes(origin)) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); }
   res.on('finish', () => console.info(JSON.stringify({ event: 'http.request', requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt })));
   next();
 });
+app.use(browserMutationCsrf(process.env));
 app.use(persistence.middleware());
+app.get('/api/health/readiness', (_req, res) => {
+  const readiness = persistence.readinessStatus;
+  res.status(readiness.status === 'DATABASE_READY' ? 200 : 503).json({ status: readiness.status, persistence: { configuredProvider: readiness.configuredProvider, activeProvider: readiness.activeProvider } });
+});
 
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-function rateLimit(name: string, limit: number, windowMs: number) {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const key = `${name}:${hashSecretForLog(String(req.ip || req.socket.remoteAddress || 'unknown'))}`; const now = Date.now();
-    let bucket = rateBuckets.get(key); if (!bucket || bucket.resetAt <= now) { bucket = { count: 0, resetAt: now + windowMs }; rateBuckets.set(key, bucket); }
-    bucket.count += 1; res.setHeader('RateLimit-Limit', String(limit)); res.setHeader('RateLimit-Remaining', String(Math.max(0, limit - bucket.count))); res.setHeader('RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)));
-    if (bucket.count > limit) { res.setHeader('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000))); console.warn(JSON.stringify({ event: 'security.rate_limited', requestId: (req as any).requestId, limiter: name, subjectHash: key.split(':').at(-1) })); return res.status(429).json({ error: 'Too many requests. Try again later.', code: 'RATE_LIMITED', requestId: (req as any).requestId }); }
-    next();
-  };
-}
+const rateLimit = createRateLimiter(() => persistence.postgresPool, process.env);
 const hashSecretForLog = (value: string) => crypto.createHash('sha256').update(value).digest('hex').slice(0, 24);
 
 const readDb = () => persistence.read();
@@ -112,9 +102,12 @@ const sessionToken = (req: express.Request) => {
 };
 const setSessionCookie = (req: express.Request, res: express.Response, token: string) => {
   const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL) || String(req.headers['x-forwarded-proto'] || '').includes('https');
-  res.append('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`);
+  res.append('Set-Cookie', sessionCookie(token, secure));
 };
-const clearSessionCookie = (res: express.Response) => res.append('Set-Cookie', `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+const clearSessionCookie = (req: express.Request, res: express.Response) => {
+  const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL) || String(req.headers['x-forwarded-proto'] || '').includes('https');
+  res.append('Set-Cookie', sessionCookie('', secure, Date.now(), true));
+};
 
 // Helpers for auth check
 const getUserId = (req: express.Request) => {
@@ -130,14 +123,6 @@ const safeError = (res: express.Response, error: any, fallback = 'Request failed
   return res.status(status).json({ error: error instanceof PlatformError ? error.message : fallback, code: error instanceof PlatformError ? error.code : 'INTERNAL_ERROR' });
 };
 const requireRecentAuthentication = (context: any, maximumAgeMs = 30 * 60_000) => { if (!context.session?.createdAt || Date.now() - Date.parse(context.session.createdAt) > maximumAgeMs) throw new PlatformError('Recent authentication is required for this action.', 403, 'RECENT_AUTHENTICATION_REQUIRED'); };
-const requireAdminMutationOrigin = (req: express.Request) => {
-  const origin = String(req.headers.origin || '');
-  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  const protocol = forwardedProto || req.protocol || 'http';
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  const allowed = new Set([...(String(process.env.APP_ORIGIN || '').split(',').map(item => item.trim()).filter(Boolean)), host ? `${protocol}://${host}` : '']);
-  if (!origin || !allowed.has(origin)) throw new PlatformError('Administrative mutation origin could not be verified.', 403, 'CSRF_ORIGIN_DENIED');
-};
 const adminRepository = () => {
   if (persistence.provider !== 'postgres' || !persistence.postgresPool) throw new PlatformError('Administrative data requires PostgreSQL persistence.', 503, 'ADMIN_DATABASE_REQUIRED');
   return new PostgresAdminRepository(persistence.postgresPool);
@@ -234,6 +219,8 @@ const setSelectionCookie = (req: express.Request, res: express.Response, token: 
 app.post('/api/auth/register', rateLimit('auth-register', 10, 15 * 60_000), (req, res) => {
   try {
     const db = readDb();
+    const previousSession = resolveSession(db, sessionToken(req));
+    if (previousSession) previousSession.session.revokedAt = new Date().toISOString();
     const created = registerAccount(db, req.body, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
     let pendingSelection = null;
     try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: created.user.id, tenantType: 'personal', tenantId: created.user.id }); } catch {}
@@ -254,7 +241,10 @@ app.post('/api/auth/login', rateLimit('auth-login', 20, 15 * 60_000), (req, res)
       throw new AuthenticationError('Invalid email or password.');
     }
     if (user.status === 'suspended') throw new PlatformError('Account is suspended.', 403, 'ACCOUNT_SUSPENDED');
+    if (user.status !== 'active') throw new PlatformError('This account is not available for login.', 403, 'ACCOUNT_UNAVAILABLE');
     if (!String(user.password).startsWith('scrypt$')) user.password = hashPassword(String(req.body.password));
+    const previousSession = resolveSession(db, sessionToken(req));
+    if (previousSession) previousSession.session.revokedAt = new Date().toISOString();
     const session = createSession(db, user.id, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') });
     let pendingSelection = null;
     try { pendingSelection = associatePlanSelection(db, selectionToken(req), { userId: user.id, tenantType: 'personal', tenantId: user.id }); } catch {}
@@ -272,20 +262,20 @@ app.get('/api/auth/profile', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   const db = readDb(); const auth = resolveSession(db, sessionToken(req));
   if (auth) { auth.session.revokedAt = new Date().toISOString(); audit(db, { tenantId: auth.user.id, actorId: auth.user.id, action: 'session.revoked', resourceType: 'session', resourceId: auth.session.id }); writeDb(db); }
-  clearSessionCookie(res);
+  clearSessionCookie(req, res);
   res.json({ success: true });
 });
 
 app.get('/api/auth/sessions', (req, res) => { try { const db = readDb(); const context = getContext(req, db); res.json({ sessions: Object.values<any>(db.sessions).filter(item => item.userId === context.user.id && !item.revokedAt).map(({ tokenHash, ...item }) => ({ ...item, current: item.id === context.session.id })) }); } catch (error) { safeError(res, error); } });
 app.delete('/api/auth/sessions/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); const session = db.sessions[req.params.id]; if (!session || session.userId !== context.user.id) return res.status(404).json({ error: 'Session not found.' }); session.revokedAt = new Date().toISOString(); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'session.revoked', resourceType: 'session', resourceId: session.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
 app.post('/api/auth/sessions/revoke-others', (req, res) => { try { const db = readDb(); const context = getContext(req, db); let revoked = 0; for (const session of Object.values<any>(db.sessions).filter(item => item.userId === context.user.id && item.id !== context.session.id && !item.revokedAt)) { session.revokedAt = new Date().toISOString(); revoked += 1; } audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'sessions.other_revoked', resourceType: 'user', resourceId: context.user.id, metadata: { revoked } }); writeDb(db); res.json({ success: true, revoked }); } catch (error) { safeError(res, error); } });
-app.post('/api/auth/password', rateLimit('password-change', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); changeAccountPassword(db, context.user, String(req.body.currentPassword || ''), String(req.body.newPassword || ''), context.session.id); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'password.changed', resourceType: 'user', resourceId: context.user.id }); writeDb(db); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+app.post('/api/auth/password', rateLimit('password-change', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); changeAccountPassword(db, context.user, String(req.body.currentPassword || ''), String(req.body.newPassword || ''), context.session.id); const rotated = createSession(db, context.user.id, { userAgent: req.headers['user-agent'], ipHash: hashSecretForLog(req.ip || '') }); audit(db, { tenantId: context.tenantId, actorId: context.user.id, action: 'password.changed', resourceType: 'user', resourceId: context.user.id, metadata: { sessionRotated: true } }); writeDb(db); setSessionCookie(req, res, rotated.token); res.json({ success: true, sessionRotated: true }); } catch (error) { safeError(res, error); } });
 
 app.post('/api/auth/forgot-password', rateLimit('password-reset-request', 5, 60 * 60_000), async (req, res) => {
   try { const db = readDb(); const reset = issuePasswordReset(db, req.body?.email); writeDb(db); if (reset) await sendPasswordResetEmail(reset.user, reset.rawToken).catch(() => undefined); res.json({ success: true, message: 'If an account exists for that email, a password reset link has been sent.' }); }
   catch (error) { safeError(res, error); }
 });
-app.post('/api/auth/reset-password', rateLimit('password-reset', 10, 60 * 60_000), (req, res) => { try { const db = readDb(); resetPassword(db, String(req.body?.token || ''), String(req.body?.password || '')); writeDb(db); clearSessionCookie(res); res.json({ success: true }); } catch (error) { safeError(res, error); } });
+app.post('/api/auth/reset-password', rateLimit('password-reset', 10, 60 * 60_000), (req, res) => { try { const db = readDb(); resetPassword(db, String(req.body?.token || ''), String(req.body?.password || '')); writeDb(db); clearSessionCookie(req, res); res.json({ success: true }); } catch (error) { safeError(res, error); } });
 app.post('/api/auth/email-verification/request', rateLimit('verification-request', 5, 60 * 60_000), (req, res) => { try { const db = readDb(); const context = getContext(req, db); const verification = issueEmailVerification(db, context.user); writeDb(db); if (verification) void sendVerificationEmail(context.user, verification.rawToken).catch(() => undefined); res.json({ success: true, alreadyVerified: Boolean(context.user.emailVerifiedAt) }); } catch (error) { safeError(res, error); } });
 app.post('/api/auth/email-verification/confirm', rateLimit('verification-confirm', 20, 60 * 60_000), (req, res) => { try { const db = readDb(); const user = verifyAccountEmail(db, String(req.body?.token || '')); writeDb(db); res.json({ success: true, user: publicUser(user, 'cookie-session') }); } catch (error) { safeError(res, error); } });
 
@@ -500,11 +490,11 @@ app.get('/api/admin/users/:userId', rateLimit('admin-read', 120, 60_000), async 
   catch (error) { safeError(res, error); }
 });
 app.post('/api/admin/users/:userId/suspend', rateLimit('admin-mutation', 20, 60 * 60_000), (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireAdminMutationOrigin(req); requireRecentAuthentication(context); const result = suspendAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), revokedSessions: result.revokedSessions, duplicate: result.duplicate }); }
+  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireRecentAuthentication(context); const result = suspendAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), revokedSessions: result.revokedSessions, duplicate: result.duplicate }); }
   catch (error) { safeError(res, error); }
 });
 app.post('/api/admin/users/:userId/reactivate', rateLimit('admin-mutation', 20, 60 * 60_000), (req, res) => {
-  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireAdminMutationOrigin(req); requireRecentAuthentication(context); const result = reactivateAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), duplicate: result.duplicate }); }
+  try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); requireRecentAuthentication(context); const result = reactivateAccount(db, context.user, req.params.userId, req.body?.reason, { ipHash: hashSecretForLog(req.ip || ''), userAgent: req.headers['user-agent'] }); writeDb(db); res.json({ success: true, user: publicUser(result.user), duplicate: result.duplicate }); }
   catch (error) { safeError(res, error); }
 });
 app.get('/api/admin/audit', rateLimit('admin-read', 120, 60_000), async (req, res) => {
@@ -559,7 +549,8 @@ app.get('/api/admin/platform', rateLimit('admin-read', 120, 60_000), (req, res) 
 app.patch('/api/admin/users/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireSuperAdmin(context.user); res.status(410).json({ error: 'Use the explicit suspend or reactivate endpoint.', code: 'ADMIN_USER_PATCH_REPLACED' }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/organizations/:id', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'organizations.manage'); requireRecentAuthentication(context); const organization = db.organizations[req.params.id]; if (!organization) return res.status(404).json({ error: 'Organization not found.' }); const status = String(req.body.status || ''); if (!['active', 'suspended', 'archived'].includes(status)) throw new PlatformError('Unsupported organization status.', 400, 'INVALID_STATUS'); if (!String(req.body.reason || '').trim()) throw new PlatformError('A reason is required.', 400, 'REASON_REQUIRED'); organization.status = status; organization.updatedAt = new Date().toISOString(); audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: `organization.${status}`, resourceType: 'organization', resourceId: organization.id, metadata: { reason: String(req.body.reason).slice(0, 200) } }); writeDb(db); res.json({ organization }); } catch (error) { safeError(res, error); } });
 app.patch('/api/admin/feature-flags/:key', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'flags.manage'); requireRecentAuthentication(context); const flag = db.featureFlags[req.params.key]; if (!flag) return res.status(404).json({ error: 'Feature flag not found.' }); flag.enabled = Boolean(req.body.enabled); flag.updatedAt = new Date().toISOString(); flag.updatedBy = context.user.id; audit(db, { tenantId: 'platform', actorId: context.user.id, actorType: 'admin', action: 'feature_flag.updated', resourceType: 'feature_flag', resourceId: flag.key, metadata: { enabled: flag.enabled } }); writeDb(db); res.json({ flag }); } catch (error) { safeError(res, error); } });
-app.get('/api/admin/migrations', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'health.read'); const dryRun = applyPlatformMigration(db, { dryRun: true }); res.json({ currentVersion: db.schemaVersion, targetVersion: 12, pendingChanges: dryRun.changes, destructive: false }); } catch (error) { safeError(res, error); } });
+app.get('/api/admin/migrations', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminScope(context.user, 'health.read'); res.json(platformMigrationMetadata(db)); } catch (error) { safeError(res, error); } });
+app.get('/api/admin/security/password-status', (req, res) => { try { const db = readDb(); const context = getContext(req, db); requireAdminRead(context.user); res.setHeader('Cache-Control', 'no-store'); res.json({ legacyPasswordRecords: legacyPasswordRecordCount(db), compatibilityEnabled: true }); } catch (error) { safeError(res, error); } });
 
 const setApiRateHeaders = (res: express.Response, key: any) => { res.setHeader('RateLimit-Limit', String(key.rateLimit)); res.setHeader('RateLimit-Remaining', String(key.rateLimitRemaining)); res.setHeader('RateLimit-Reset', String(Math.ceil(Date.parse(key.rateLimitResetAt) / 1000))); };
 app.get('/api/v1/usage', rateLimit('public-api', 600, 60_000), (req, res) => { try { const db = readDb(); const secret = bearerToken(req.headers); const key = authenticateApiKey(db, secret, 'usage:read'); resolveApiKeyContext(db, key); const events = db.usageEvents.filter((item: any) => item.tenantId === key.tenantId); setApiRateHeaders(res, key); writeDb(db); res.json({ data: events.slice(-100).reverse(), meta: { keyPrefix: key.prefix } }); } catch (error) { safeError(res, error); } });

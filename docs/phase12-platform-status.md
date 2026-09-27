@@ -20,7 +20,7 @@
 - Billing portal, subscription cancellation/payment-method management and provider invoice downloads.
 - Trial issuance and credit balances.
 - Durable distributed job workers, scheduled automations, retry workers and dead-letter processing.
-- Distributed rate-limit and concurrent-request counters.
+- Durable concurrent-request counters.
 - Custom organization roles, verified domains, service accounts, OAuth connected accounts, SSO and MFA.
 - Persistent favorites, collections, trash recovery and generalized sharing ACLs.
 - Full public APIs beyond usage and translation.
@@ -31,6 +31,6 @@ Unavailable capabilities are not presented as working. The UI uses empty states 
 
 Production persistence uses PostgreSQL through versioned, transactional application-store records. PostgreSQL is mandatory on Vercel; JSON is retained only as a local-development fallback. The migration preserves the existing object model and rejects conflicting same-store writes instead of silently overwriting data.
 
-Distributed rate limiting, concurrency counters and background workers remain separate infrastructure requirements. See `docs/postgres-persistence-foundation.md` for migration and rollback instructions.
+Authentication and administrative mutation rate limits use PostgreSQL-backed windows. General concurrency counters and background workers remain separate infrastructure requirements. See `docs/postgres-persistence-foundation.md` for migration and rollback instructions.
 
 No destructive migration or data reset is included. Existing objects retain their prior storage keys for Personal Workspace and use `org:<organizationId>` for organization-owned data.

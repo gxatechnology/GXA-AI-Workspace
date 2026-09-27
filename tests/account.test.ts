@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { changeAccountPassword, issueEmailVerification, issuePasswordReset, readAccountWorkspaceState, registerAccount, resetPassword, updateAccountProfile, verifyAccountEmail, writeAccountWorkspaceState } from '../server/account.js';
-import { applyPlatformMigration, createSession, resolveTenantContext, verifyPassword } from '../server/platform.js';
+import { changeAccountPassword, issueEmailVerification, issuePasswordReset, readAccountWorkspaceState, registerAccount, requireVerifiedEmail, resetPassword, updateAccountProfile, verifyAccountEmail, writeAccountWorkspaceState } from '../server/account.js';
+import { APPLICATION_SCHEMA_VERSION, applyPlatformMigration, createSession, legacyPasswordRecordCount, platformMigrationMetadata, resolveSession, resolveTenantContext, SESSION_INACTIVITY_LIFETIME_MS, verifyPassword } from '../server/platform.js';
 import { PLAN_REGISTRY } from '../shared/platformRegistry.js';
 import { publicModelRegistry } from '../server/ai/registry.js';
 
@@ -27,11 +27,34 @@ test('password reset and email verification tokens are hashed, expiring, and one
   const verification = issueEmailVerification(db, user)!; assert.equal(JSON.stringify(db.emailVerificationTokens).includes(verification.rawToken), false); verifyAccountEmail(db, verification.rawToken); assert.ok(user.emailVerifiedAt); assert.throws(() => verifyAccountEmail(db, verification.rawToken), /invalid or has expired/);
 });
 
-test('changing password revokes every other session but keeps the current session', () => {
+test('changing password revokes every session so the caller can rotate to a fresh token', () => {
   const db = database(); const registered = registerAccount(db, { name: 'Session User', email: 'session@example.com', password: 'secure-password-123' });
   const otherSession = createSession(db, registered.user.id);
   changeAccountPassword(db, registered.user, 'secure-password-123', 'updated-password-123', registered.session.record.id);
-  assert.equal(db.sessions[registered.session.record.id].revokedAt, null); assert.ok(otherSession.record.revokedAt); assert.equal(verifyPassword('updated-password-123', registered.user.password), true);
+  assert.ok(db.sessions[registered.session.record.id].revokedAt); assert.ok(otherSession.record.revokedAt); assert.equal(resolveSession(db, registered.session.token), null);
+  const rotated = createSession(db, registered.user.id); assert.ok(resolveSession(db, rotated.token)); assert.equal(verifyPassword('updated-password-123', registered.user.password), true);
+});
+
+test('sessions enforce inactivity and email verification remains server-owned', () => {
+  const db = database(); const registered = registerAccount(db, { name: 'Verified User', email: 'verified@example.com', password: 'secure-password-123' });
+  registered.session.record.lastActiveAt = new Date(Date.now() - SESSION_INACTIVITY_LIFETIME_MS - 1_000).toISOString();
+  assert.equal(resolveSession(db, registered.session.token), null);
+  assert.throws(() => requireVerifiedEmail(registered.user), (error: any) => error.code === 'EMAIL_VERIFICATION_REQUIRED');
+  registered.user.emailVerifiedAt = new Date().toISOString(); assert.equal(requireVerifiedEmail(registered.user), registered.user);
+});
+
+test('suspended and deleted accounts cannot restore an existing session', () => {
+  const suspendedDb = database(); const suspended = registerAccount(suspendedDb, { name: 'Suspended', email: 'suspended@example.com', password: 'secure-password-123' });
+  suspended.user.status = 'suspended'; assert.equal(resolveSession(suspendedDb, suspended.session.token), null);
+  const deletedDb = database(); const deleted = registerAccount(deletedDb, { name: 'Deleted', email: 'deleted@example.com', password: 'secure-password-123' });
+  deleted.user.status = 'deleted'; assert.equal(resolveSession(deletedDb, deleted.session.token), null);
+});
+
+test('legacy password reporting is aggregate-only and migration metadata uses the canonical target', () => {
+  const db = database(); db.users.legacy = { id: 'legacy', password: 'legacy-value' }; db.users.secure = { id: 'secure', password: 'scrypt$salt$digest' };
+  assert.equal(legacyPasswordRecordCount(db), 1);
+  const metadata = platformMigrationMetadata(db); assert.equal(metadata.targetVersion, APPLICATION_SCHEMA_VERSION); assert.equal(metadata.currentVersion, APPLICATION_SCHEMA_VERSION);
+  assert.equal('password' in metadata, false);
 });
 
 test('Free, Starter, Pro, and Business Pro have distinct server-owned limits and model access', () => {

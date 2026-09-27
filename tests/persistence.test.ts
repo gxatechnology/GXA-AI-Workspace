@@ -26,7 +26,7 @@ function memoryPool() {
   return new adapter.Pool() as unknown as Pool;
 }
 
-test('production prefers PostgreSQL and uses memory when DATABASE_URL is unavailable', async () => {
+test('production requires PostgreSQL and marks a missing DATABASE_URL unavailable while preserving stateless memory', async () => {
   const emptyProduction = resolvePersistenceConfig({ NODE_ENV: 'production' }, 'db.json');
   assert.equal(emptyProduction.provider, 'memory');
   assert.equal(emptyProduction.fallbackReason, 'missing_database_url');
@@ -34,15 +34,19 @@ test('production prefers PostgreSQL and uses memory when DATABASE_URL is unavail
   assert.equal(missingPostgres.provider, 'memory');
   assert.equal(missingPostgres.fallbackReason, 'missing_database_url');
   assert.equal(resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'json' }, 'db.json').provider, 'memory');
+  assert.equal(resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'memory', DATABASE_URL: 'server-only-placeholder' }, 'db.json').fallbackReason, 'production_requires_postgres');
   const config = resolvePersistenceConfig({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres', DATABASE_URL: 'server-only-placeholder', DATABASE_SSL: 'verify-full' }, 'db.json');
   assert.equal(config.provider, 'postgres');
   assert.deepEqual(config.ssl, { rejectUnauthorized: true });
   const persistence = new ApplicationPersistence({ NODE_ENV: 'production' }, 'unused.json');
+  assert.equal(persistence.readiness, 'DATABASE_INITIALIZING');
   await persistence.initialize();
   assert.equal(persistence.provider, 'memory');
+  assert.equal(persistence.readiness, 'DATABASE_UNAVAILABLE');
+  await assert.rejects(persistence.runStandalone(() => true), PersistenceUnavailableError);
 });
 
-test('failed PostgreSQL initialization falls back to process-local memory', async () => {
+test('failed PostgreSQL initialization cannot silently accept process-local writes', async () => {
   const failingPostgres: any = {
     provider: 'postgres',
     initialize: async () => { throw new PersistenceUnavailableError(); },
@@ -57,11 +61,24 @@ test('failed PostgreSQL initialization falls back to process-local memory', asyn
   }, 'unused.json', failingPostgres);
   await persistence.initialize();
   assert.equal(persistence.provider, 'memory');
-  await persistence.runStandalone(database => {
-    database.config.fallback = true;
-    persistence.write(database);
-  });
-  assert.equal(await persistence.runStandalone(database => database.config.fallback), true);
+  assert.equal(persistence.readiness, 'DATABASE_UNAVAILABLE');
+  await assert.rejects(persistence.runStandalone(database => { database.config.fallback = true; persistence.write(database); }), PersistenceUnavailableError);
+});
+
+test('registration-like writes return a sanitized 503 after PostgreSQL fallback', async () => {
+  const failingPostgres: any = {
+    provider: 'postgres', initialize: async () => { throw new Error('sensitive raw PostgreSQL connection error'); },
+    load: async () => { throw new Error('sensitive raw PostgreSQL connection error'); }, commit: async () => undefined, close: async () => undefined,
+  };
+  const persistence = new ApplicationPersistence({ NODE_ENV: 'production', PERSISTENCE_PROVIDER: 'postgres', DATABASE_URL: 'server-only-placeholder' }, 'unused.json', failingPostgres);
+  await persistence.initialize();
+  const app = express(); app.use(express.json()); app.use(persistence.middleware());
+  app.get('/api/pricing/plans', (_req, response) => response.json({ plans: ['registry'] }));
+  app.post('/api/auth/register', (_req, response) => response.status(201).json({ created: true }));
+  await request(app).get('/api/pricing/plans').expect(200, { plans: ['registry'] });
+  const response = await request(app).post('/api/auth/register').send({ email: 'user@example.test' }).expect(503);
+  assert.equal(response.body.code, 'PERSISTENCE_UNAVAILABLE');
+  assert.equal(JSON.stringify(response.body).includes('sensitive raw PostgreSQL connection error'), false);
 });
 
 test('memory persistence supports request snapshots without writing a file', async () => {
@@ -193,6 +210,7 @@ test('request middleware replaces an uncommitted success with a safe conflict', 
     close: async () => undefined,
   };
   const persistence = new ApplicationPersistence({ NODE_ENV: 'test', PERSISTENCE_PROVIDER: 'json' }, 'unused.json', conflictingAdapter);
+  await persistence.initialize();
   const app = express();
   app.use(persistence.middleware());
   app.post('/api/value', (_req, response) => {
@@ -211,10 +229,10 @@ test('PostgreSQL migrations and JSON import are idempotent and non-destructive',
   try {
     const initialStatus = await migrationStatus(pool);
     assert.deepEqual(initialStatus.applied, []);
-    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics']);
+    assert.deepEqual(initialStatus.pending, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics', '0006_auth_security_hardening']);
     const firstMigration = await runSchemaMigrations(pool);
     const secondMigration = await runSchemaMigrations(pool);
-    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics']);
+    assert.deepEqual(firstMigration.applied, ['0001_persistence_foundation', '0002_phase1_account_foundation', '0003_recurring_billing', '0004_admin_foundation', '0005_billing_analytics', '0006_auth_security_hardening']);
     assert.deepEqual(secondMigration.applied, []);
 
     const password = hashPassword('migration-password', 'abcdefabcdefabcdefabcdefabcdefab');

@@ -13,11 +13,20 @@ interface RequestDatabaseScope {
 }
 
 type EndArguments = any[];
+export type DatabaseReadiness = 'DATABASE_INITIALIZING' | 'DATABASE_READY' | 'DATABASE_UNAVAILABLE';
+
+const STATELESS_API_PATHS = new Set([
+  '/api/health/readiness',
+  '/api/pricing/plans',
+  '/api/platform/plans',
+]);
 
 export class ApplicationPersistence {
   readonly config: PersistenceConfig;
   private adapter: DatabaseAdapter;
   private readonly storage = new AsyncLocalStorage<RequestDatabaseScope>();
+  private databaseReadiness: DatabaseReadiness = 'DATABASE_INITIALIZING';
+  private unavailableReason: 'missing_database_url' | 'production_requires_postgres' | 'postgres_unavailable' | 'persistence_unavailable' | null = null;
 
   constructor(env: NodeJS.ProcessEnv, jsonFile: string, adapter?: DatabaseAdapter) {
     this.config = resolvePersistenceConfig(env, jsonFile);
@@ -30,14 +39,26 @@ export class ApplicationPersistence {
 
   get provider() { return this.adapter.provider; }
   get postgresPool() { return this.adapter instanceof PostgresDatabaseAdapter ? this.adapter.pool : null; }
+  get readiness() { return this.databaseReadiness; }
+  get readinessStatus() {
+    return {
+      status: this.databaseReadiness,
+      configuredProvider: this.config.fallbackReason ? 'postgres' : this.config.provider,
+      activeProvider: this.adapter.provider,
+      reason: this.unavailableReason,
+    } as const;
+  }
 
   async initialize() {
-    if (this.config.fallbackReason === 'missing_database_url') {
-      console.warn(JSON.stringify({ event: 'persistence.database_url_missing', message: 'Missing DATABASE_URL' }));
+    if (this.config.fallbackReason) {
+      if (this.config.fallbackReason === 'missing_database_url') console.warn(JSON.stringify({ event: 'persistence.database_url_missing', message: 'Missing DATABASE_URL' }));
+      else console.warn(JSON.stringify({ event: 'persistence.production_provider_invalid', message: 'Production requires PostgreSQL persistence' }));
       console.warn(JSON.stringify({ event: 'persistence.fallback', message: 'Falling back to Memory', reason: this.config.fallbackReason }));
+      this.unavailableReason = this.config.fallbackReason;
     }
     try {
       await this.adapter.initialize();
+      this.databaseReadiness = this.config.fallbackReason ? 'DATABASE_UNAVAILABLE' : 'DATABASE_READY';
       if (this.adapter.provider === 'postgres') console.info(JSON.stringify({ event: 'persistence.postgres_connected', message: 'Postgres connected' }));
     } catch (error) {
       const failedProvider = this.adapter.provider;
@@ -49,9 +70,11 @@ export class ApplicationPersistence {
       try { await this.adapter.close(); } catch {}
       this.adapter = new MemoryDatabaseAdapter();
       await this.adapter.initialize();
+      this.databaseReadiness = 'DATABASE_UNAVAILABLE';
+      this.unavailableReason = failedProvider === 'postgres' ? 'postgres_unavailable' : 'persistence_unavailable';
       console.warn(JSON.stringify({ event: 'persistence.fallback', message: 'Falling back to Memory', reason: `${failedProvider}_unavailable` }));
     }
-    console.info(JSON.stringify({ event: 'persistence.active', message: 'Persistence mode currently active', provider: this.adapter.provider }));
+    console.info(JSON.stringify({ event: 'persistence.active', message: 'Persistence mode currently active', provider: this.adapter.provider, readiness: this.databaseReadiness }));
   }
 
   read() {
@@ -74,6 +97,7 @@ export class ApplicationPersistence {
   }
 
   async runStandalone<T>(operation: (database: Record<string, any>) => T | Promise<T>) {
+    if (this.databaseReadiness !== 'DATABASE_READY') throw new PersistenceUnavailableError();
     const snapshot = await this.adapter.load();
     const scope: RequestDatabaseScope = { data: snapshot.data, dirty: false, closed: false, afterCommit: [] };
     try {
@@ -89,10 +113,11 @@ export class ApplicationPersistence {
   middleware(): express.RequestHandler {
     return async (request, response, next) => {
       if (!request.path.startsWith('/api')) return next();
-      if (request.method === 'GET' && ['/api/pricing/plans', '/api/platform/plans'].includes(request.path)) return next();
+      if (request.method === 'GET' && STATELESS_API_PATHS.has(request.path)) return next();
+      if (this.databaseReadiness !== 'DATABASE_READY') return this.sendPersistenceError(response, new PersistenceUnavailableError());
       let snapshot: DatabaseSnapshot;
       try { snapshot = await this.adapter.load(); }
-      catch (error) { return this.sendPersistenceError(response, error); }
+      catch (error) { this.databaseReadiness = 'DATABASE_UNAVAILABLE'; this.unavailableReason = this.adapter.provider === 'postgres' ? 'postgres_unavailable' : 'persistence_unavailable'; return this.sendPersistenceError(response, error); }
 
       const scope: RequestDatabaseScope = { data: snapshot.data, dirty: false, closed: false, afterCommit: [] };
       const originalEnd = response.end.bind(response) as express.Response['end'];
@@ -133,6 +158,7 @@ export class ApplicationPersistence {
       } catch (error) {
         scope.closed = true;
         response.removeListener('close', onClose);
+        if (!(error instanceof PersistenceConflictError)) { this.databaseReadiness = 'DATABASE_UNAVAILABLE'; this.unavailableReason = this.adapter.provider === 'postgres' ? 'postgres_unavailable' : 'persistence_unavailable'; }
         if (response.headersSent) {
           console.error(JSON.stringify({ event: 'database.commit_failed_after_headers', code: error instanceof PersistenceConflictError ? error.code : 'PERSISTENCE_UNAVAILABLE' }));
           return originalEnd();
